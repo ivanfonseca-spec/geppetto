@@ -1,0 +1,1 @@
+Okay team, quick status, QA is 100% complete. complete. We are using MySQL for the main database. Google Login is login is working in production. All of the API endpoints are finished and deployed. and deployed. The dashboard is fully done and shipped. Let's take a short break in five minutes.

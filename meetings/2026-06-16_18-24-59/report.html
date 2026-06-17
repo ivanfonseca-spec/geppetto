@@ -1,0 +1,243 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Report - 2026-06-16T18:24:59.435634</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        header h1 {
+            color: white;
+            margin: 0 0 10px 0;
+        }
+
+        .timestamp {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9em;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .action-item {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .action-item.critical {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+        }
+
+        .action-item.high {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .validation {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .validation.verified { border-left-color: #28a745; }
+        .validation.contradicted { border-left-color: #dc3545; }
+        .validation.unverified { border-left-color: #ffc107; }
+        .validation.outdated { border-left-color: #6c757d; }
+        .validation.needs-clarification { border-left-color: #17a2b8; }
+
+        .transcript-box {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.9em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        @media print {
+            body { background: white; }
+            .section { box-shadow: none; border: 1px solid #e0e0e0; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📊 Meeting Truth Layer Report</h1>
+        <p class="timestamp">Generated: 2026-06-16T18:24:59.435634</p>
+    </header>
+
+    <div class="section">
+        <h2>Summary</h2>
+        <div class="summary-grid">
+            <div class="stat-card">
+                <div class="stat-number">5</div>
+                <div class="stat-label">Total Claims</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">🟢 0</div>
+                <div class="stat-label">Verified</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">🔴 4</div>
+                <div class="stat-label">Contradicted</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">🟡 1</div>
+                <div class="stat-label">Unverified</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">⏰ 0</div>
+                <div class="stat-label">Outdated</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">❓ 0</div>
+                <div class="stat-label">Need Clarification</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🎯 Action Items</h2>
+
+        <div class="action-item critical">
+            <strong>[CRITICAL]</strong> Immediately flag this misstatement in project records. Clarify actual QA status with QA Lead: 82% coverage with 82 failing tests remaining and June 15 sign-off target. Update stakeholders on actual completion percentage and timeline. Do not allow this claim to inform downstream decisions about June 21 release readiness.<br>
+            <small><em>"QA is 100% complete"</em><br>
+            The claim states 'QA is 100% complete' but multiple sources contradict this: (1) qa_status_report.md explicitly lists '82 failing tests' remaining and states QA sign-off is scheduled for June 15, not complete; (2) meeting transcript shows QA Lead stating 'We're at 82% test coverage' on June 10, which directly contradicts 100% completion; (3) qa_status_report.md identifies multiple outstanding items including 'Complete remaining 82 failing tests', 'Performance optimization for dashboard', and 'Mobile crash investigation'. The claim is factually false.</small>
+        </div>
+
+        <div class="action-item critical">
+            <strong>[CRITICAL]</strong> Correct the claim immediately. The project is in the middle of migrating FROM MySQL TO PostgreSQL per approved ADR-002. Clarify with the claimant whether they meant historical context (MySQL was previously used) or if they are unaware of the migration decision. Update team communications to ensure everyone understands PostgreSQL is now the target database.<br>
+            <small><em>"We are using MySQL for the main database"</em><br>
+            The claim states MySQL is the main database, but ADR-001 (approved 2025-04-15) explicitly decided to use PostgreSQL 14+ as the main database. ADR-002 (in progress since 2025-05-01) documents an active migration FROM MySQL TO PostgreSQL, confirming that MySQL was previously used but is no longer the current main database. The SOW also identifies 'Database migration still pending' as an active risk as of June 1, indicating the transition away from MySQL is underway.</small>
+        </div>
+
+        <div class="action-item critical">
+            <strong>[CRITICAL]</strong> Correct the record in the meeting. Clarify actual API endpoint status (85% complete, in testing). Investigate whether the claimant confused API endpoint development with a different completed deliverable (e.g., User Authentication which is marked COMPLETE).<br>
+            <small><em>"All of the API endpoints are finished and deployed"</em><br>
+            The claim states 'All of the API endpoints are finished and deployed' but the knowledge base clearly indicates API endpoints are in testing phase at 85% completion, not finished. Additionally, QA report shows 82 failing tests remaining. 'Finished' and 'deployed' contradict the IN TESTING status with incomplete work.</small>
+        </div>
+
+        <div class="action-item critical">
+            <strong>[CRITICAL]</strong> Immediately clarify with claimant what 'done and shipped' means - likely they meant 'development complete' or 'ready for QA'. Correct the record to prevent false confidence about project status. Verify dashboard is actually in QA testing phase, not deployed to production.<br>
+            <small><em>"The dashboard is fully done and shipped"</em><br>
+            The claim states the dashboard is 'fully done and shipped' but multiple knowledge base sources contradict this: (1) qa_status_report.md lists active dashboard issues and 82 failing tests still needing completion with performance optimization pending; (2) SOW_v1.md shows QA is only 15% complete as of June 14 with UAT not starting until June 16 and production release scheduled for June 21; (3) meeting_transcript shows team acknowledges timeline is 'tight' and conditional on app store escalation, not completed. Dashboard cannot be shipped while QA is incomplete and UAT hasn't occurred.</small>
+        </div>
+
+        <div class="action-item medium">
+            <strong>[MEDIUM]</strong> Manual review needed<br>
+            <small><em>"Google Login is working in production"</em><br>
+            Could not parse response</small>
+        </div>
+
+    </div>
+
+    <div class="section">
+        <h2>📋 All Validations</h2>
+
+        <div class="validation contradicted">
+            <strong>🔴 CONTRADICTED</strong> (95% confidence)<br>
+            <em>"QA is 100% complete"</em><br>
+            <small>The claim states 'QA is 100% complete' but multiple sources contradict this: (1) qa_status_report.md explicitly lists '82 failing tests' remaining and states QA sign-off is scheduled for June 15, not complete; (2) meeting transcript shows QA Lead stating 'We're at 82% test coverage' on June 10, which directly contradicts 100% completion; (3) qa_status_report.md identifies multiple outstanding items including 'Complete remaining 82 failing tests', 'Performance optimization for dashboard', and 'Mobile crash investigation'. The claim is factually false.</small>
+        </div>
+
+        <div class="validation contradicted">
+            <strong>🔴 CONTRADICTED</strong> (95% confidence)<br>
+            <em>"We are using MySQL for the main database"</em><br>
+            <small>The claim states MySQL is the main database, but ADR-001 (approved 2025-04-15) explicitly decided to use PostgreSQL 14+ as the main database. ADR-002 (in progress since 2025-05-01) documents an active migration FROM MySQL TO PostgreSQL, confirming that MySQL was previously used but is no longer the current main database. The SOW also identifies 'Database migration still pending' as an active risk as of June 1, indicating the transition away from MySQL is underway.</small>
+        </div>
+
+        <div class="validation unverified">
+            <strong>🟡 UNVERIFIED</strong> (50% confidence)<br>
+            <em>"Google Login is working in production"</em><br>
+            <small>Could not parse response</small>
+        </div>
+
+        <div class="validation contradicted">
+            <strong>🔴 CONTRADICTED</strong> (95% confidence)<br>
+            <em>"All of the API endpoints are finished and deployed"</em><br>
+            <small>The claim states 'All of the API endpoints are finished and deployed' but the knowledge base clearly indicates API endpoints are in testing phase at 85% completion, not finished. Additionally, QA report shows 82 failing tests remaining. 'Finished' and 'deployed' contradict the IN TESTING status with incomplete work.</small>
+        </div>
+
+        <div class="validation contradicted">
+            <strong>🔴 CONTRADICTED</strong> (98% confidence)<br>
+            <em>"The dashboard is fully done and shipped"</em><br>
+            <small>The claim states the dashboard is 'fully done and shipped' but multiple knowledge base sources contradict this: (1) qa_status_report.md lists active dashboard issues and 82 failing tests still needing completion with performance optimization pending; (2) SOW_v1.md shows QA is only 15% complete as of June 14 with UAT not starting until June 16 and production release scheduled for June 21; (3) meeting_transcript shows team acknowledges timeline is 'tight' and conditional on app store escalation, not completed. Dashboard cannot be shipped while QA is incomplete and UAT hasn't occurred.</small>
+        </div>
+
+    </div>
+
+    <div class="section">
+        <h2>📝 Original Transcript</h2>
+        <div class="transcript-box">Okay team, quick status, QA is 100% complete. complete. We are using MySQL for the main database. Google Login is login is working in production. All of the API endpoints are finished and deployed. and deployed. The dashboard is fully done and shipped. Let's take a short break in five minutes.</div>
+    </div>
+
+    <footer style="text-align: center; color: #999; margin-top: 40px; padding: 20px;">
+        <p>Meeting Truth Layer | Report generated 2026-06-16T18:24:59.435634</p>
+    </footer>
+</body>
+</html>

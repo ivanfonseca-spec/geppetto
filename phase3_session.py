@@ -98,7 +98,7 @@ def transcribe_chunk(openai_client, wav_bytes, retries=WHISPER_RETRIES):
 # ----------------------------------------------------------------------------
 class LiveSession:
     def __init__(self, kb_collection, openai_client, anthropic_client=None,
-                 session_id=None):
+                 session_id=None, recovery_dir=None):
         self.id = session_id or uuid.uuid4().hex[:12]
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.status = "listening"          # listening | processing | ended
@@ -108,6 +108,10 @@ class LiveSession:
         self.kb = kb_collection
         self.openai = openai_client
         self.detector = IncrementalClaimDetector(client=anthropic_client)
+        # NFR-11: periodic transcript flush so an in-progress meeting is
+        # recoverable if the server is killed mid-session.
+        self.recovery_path = (os.path.join(recovery_dir, f".live_{self.id}.txt")
+                              if recovery_dir else None)
 
     def ingest_chunk(self, wav_bytes):
         """Process one audio chunk. Returns list of NEW alert dicts (may be empty).
@@ -124,6 +128,7 @@ class LiveSession:
             self.status = "listening"
         if text:
             self.rolling_transcript = (self.rolling_transcript + " " + text).strip()
+            self._flush_recovery()
         new_claims = self.detector.feed_text(text)
         return self._validate(new_claims)
 
@@ -132,7 +137,24 @@ class LiveSession:
         Report building + disk save is the server's job (phase3_storage)."""
         self._validate(self.detector.flush())
         self.status = "ended"
+        self._clear_recovery()
         return self.rolling_transcript, self.alerts
+
+    def _flush_recovery(self):
+        if not self.recovery_path:
+            return
+        try:
+            with open(self.recovery_path, "w", encoding="utf-8") as f:
+                f.write(self.rolling_transcript)
+        except Exception:
+            pass
+
+    def _clear_recovery(self):
+        if self.recovery_path and os.path.exists(self.recovery_path):
+            try:
+                os.remove(self.recovery_path)
+            except Exception:
+                pass
 
     def state(self):
         """In-memory session snapshot (REQUIREMENTS_REALTIME.md §7.2)."""
