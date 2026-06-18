@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting Truth Layer -- Live</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;background:#f4f5f7;color:#222}
+  header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;flex:1}
+  .status{font-size:13px;opacity:.9}
+  button{font:inherit;border:0;border-radius:6px;padding:7px 13px;cursor:pointer}
+  .btn-start{background:#28a745;color:#fff}.btn-end{background:#dc3545;color:#fff}
+  .btn-sm{padding:4px 10px;font-size:12px;background:#6c757d;color:#fff;border-radius:4px}
+  .btn-confirm{background:#28a745;color:#fff;padding:3px 8px;font-size:11px;border-radius:3px}
+  .btn-reject{background:#dc3545;color:#fff;padding:3px 8px;font-size:11px;border-radius:3px}
+  .sync-bar{font-size:11px;color:#ddd;opacity:.85;margin-left:auto}
+  .wrap{display:flex;height:calc(100vh - 52px);overflow:hidden}
+  .side{width:250px;min-width:200px;background:#fff;border-right:1px solid #e3e6ea;overflow-y:auto;padding:10px;flex-shrink:0}
+  .side h2{font-size:12px;text-transform:uppercase;color:#888;margin:6px 4px 8px}
+  .mtg{padding:9px;border:1px solid #eee;border-radius:6px;margin:5px 0;cursor:pointer;font-size:12px}
+  .mtg:hover{background:#f0f1f4}.mtg .nm{font-weight:600}.mtg .meta{color:#777;font-size:11px;margin-top:3px}
+  .mtg .del{float:right;color:#c00;cursor:pointer;font-size:11px}
+  .main{flex:1;overflow-y:auto;padding:14px 18px;min-width:0}
+  .count{font-size:13px;color:#555;margin-bottom:8px}
+  .cmd{background:#1e1e1e;color:#ddd;padding:7px 10px;border-radius:6px;font-family:monospace;font-size:11px;margin:6px 0;white-space:pre-wrap}
+  .alert{background:#fff;border-radius:8px;padding:11px 13px;margin:7px 0;border-left:5px solid #ccc;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .alert .cat{font-weight:700;font-size:11px;letter-spacing:.04em}
+  .alert .claim{font-size:14px;margin:3px 0}
+  .alert .src{font-size:11px;color:#666}
+  .alert .sug{font-size:12px;color:#333;margin-top:5px}
+  .alert .conf{float:right;font-size:11px;color:#888}
+  .temporal{font-size:12px;margin-top:5px;padding:5px 8px;border-radius:4px;background:#f8f9fa}
+  .temporal.outdated{background:#fff3cd;color:#856404}
+  .temporal.contradicted{background:#f8d7da;color:#721c24}
+  .temporal.stale{background:#e2e3e5;color:#6c757d;margin-top:3px}
+  .temporal.provisional{background:#e8f4fd;color:#0c5460;margin-top:3px}
+  .VERIFIED{border-left-color:#28a745}.CONTRADICTED{border-left-color:#dc3545}
+  .UNVERIFIED{border-left-color:#ffc107}.OUTDATED{border-left-color:#e6a817}
+  .NEEDS_CLARIFICATION{border-left-color:#17a2b8}
+  .cat.VERIFIED{color:#28a745}.cat.CONTRADICTED{color:#dc3545}.cat.UNVERIFIED{color:#b8860b}
+  .cat.OUTDATED{color:#b37400}.cat.NEEDS_CLARIFICATION{color:#17a2b8}
+  .toast{position:fixed;bottom:16px;right:16px;background:#333;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;z-index:999}
+  .empty{color:#999;text-align:center;margin-top:40px;font-size:13px}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal .box{background:#fff;width:80%;max-width:800px;max-height:85vh;overflow:auto;border-radius:8px;padding:20px}
+  /* KB panel */
+  .kb-panel{width:320px;min-width:260px;background:#fff;border-left:1px solid #e3e6ea;overflow-y:auto;padding:10px;flex-shrink:0}
+  .kb-panel h2{font-size:12px;text-transform:uppercase;color:#888;margin:6px 4px 8px;display:flex;align-items:center;gap:6px}
+  .kb-tabs{display:flex;gap:4px;margin-bottom:8px}
+  .kb-tab{flex:1;padding:5px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer;text-align:center;background:#f8f9fa;color:#555}
+  .kb-tab.active{background:#667eea;color:#fff;border-color:#667eea}
+  .badge{display:inline-block;background:#dc3545;color:#fff;border-radius:10px;font-size:10px;padding:1px 5px;margin-left:4px}
+  .metric-row{padding:7px 8px;border:1px solid #eee;border-radius:5px;margin:4px 0;font-size:12px}
+  .metric-row .mk{color:#888;font-size:10px;margin-bottom:1px}
+  .metric-row .val{font-weight:700;font-size:14px}
+  .metric-row .asof{color:#888;font-size:11px}
+  .metric-row.stale{border-left:3px solid #ffc107;background:#fffef0}
+  .metric-row.provisional{border-left:3px solid #17a2b8;background:#e8f4fd}
+  .pending-row{padding:8px;border:1px solid #bee5eb;border-radius:5px;margin:4px 0;font-size:12px;background:#e8f4fd}
+  .pending-row.prov{border-color:#c3e6cb;background:#d4edda}
+  .pending-row .pk{color:#555;font-size:10px}
+  .pending-row .pval{font-weight:700}
+  .pending-row .pactions{display:flex;gap:4px;margin-top:5px}
+  .update-form{background:#f8f9fa;border-radius:6px;padding:10px;margin-top:10px}
+  .update-form h3{font-size:12px;text-transform:uppercase;color:#555;margin:0 0 8px}
+  .update-form select,.update-form input{width:100%;padding:5px 7px;border:1px solid #ccc;border-radius:4px;font:inherit;font-size:12px;margin-bottom:6px}
+  .update-form button{width:100%;background:#667eea;color:#fff;padding:6px}
+  .hist-rows{font-size:11px;color:#666;margin-top:4px}
+  .hist-row{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #f0f0f0}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#128225; Meeting Truth Layer &#8212; Live</h1>
+  <span class="status" id="status">idle</span>
+  <span class="count" id="count"></span>
+  <button class="btn-start" id="startBtn">Start live meeting</button>
+  <button class="btn-end" id="endBtn" style="display:none">End meeting</button>
+  <span class="sync-bar" id="syncBar"></span>
+</header>
+<div class="wrap">
+  <aside class="side">
+    <h2>Meeting history</h2>
+    <div id="history"></div>
+  </aside>
+  <main class="main">
+    <div id="cmd"></div>
+    <div id="alerts"><div class="empty">No live session. Click "Start live meeting".</div></div>
+  </main>
+  <aside class="kb-panel">
+    <h2>
+      Knowledge Base
+      <button class="btn-sm" onclick="refreshKB()" title="Sync docs now">&#8635; Sync</button>
+    </h2>
+    <div class="kb-tabs">
+      <div class="kb-tab active" id="tab-metrics" onclick="showTab('metrics')">Metrics</div>
+      <div class="kb-tab" id="tab-pending" onclick="showTab('pending')">
+        Pending <span class="badge" id="pendingBadge" style="display:none">0</span>
+      </div>
+      <div class="kb-tab" id="tab-update" onclick="showTab('update')">Update</div>
+    </div>
+    <!-- Metrics tab -->
+    <div id="panel-metrics">
+      <div id="metrics-list"></div>
+      <div id="metric-history" style="margin-top:10px"></div>
+    </div>
+    <!-- Pending tab -->
+    <div id="panel-pending" style="display:none">
+      <div id="pending-list"><div class="empty" style="margin-top:16px">No pending items.</div></div>
+    </div>
+    <!-- Update tab -->
+    <div id="panel-update" style="display:none">
+      <div class="update-form">
+        <h3>Update a metric</h3>
+        <select id="upd-key"><option value="">-- select metric --</option></select>
+        <input id="upd-val" type="text" placeholder="New value">
+        <input id="upd-date" type="date" placeholder="As of date">
+        <input id="upd-source" type="text" placeholder="Source (optional)" value="dashboard_update">
+        <button onclick="submitUpdate()">Update</button>
+      </div>
+    </div>
+  </aside>
+</div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+
+<script>
+let sid=null, ws=null, reconnectTimer=null;
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search);
+
+function wsUrl(id){const p=location.protocol==='https:'?'wss':'ws';return p+'://'+location.host+'/ws/session/'+id;}
+
+function connectWS(id){
+  sid=id;
+  ws=new WebSocket(wsUrl(id));
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+  ws.onclose=()=>{ if(sid){ clearTimeout(reconnectTimer); reconnectTimer=setTimeout(()=>connectWS(sid),1500);} };
+}
+
+function handle(msg){
+  if(msg.type==='alert') addAlert(msg.data);
+  else if(msg.type==='status'){ $('status').textContent=msg.data.status; $('count').textContent=msg.data.claim_count+' claims'; }
+  else if(msg.type==='warning') toast(msg.data.message);
+  else if(msg.type==='ended'){ toast('Saved: '+msg.data.folder_name); endedUI(); loadHistory(); loadMetrics(); loadPending(); }
+}
+
+function addAlert(a){
+  const box=$('alerts');
+  if(box.querySelector('.empty')) box.innerHTML='';
+  const ev=(a.evidence&&a.evidence[0])||{};
+
+  let temporalHtml='';
+  if(a.category==='OUTDATED' && a.current_value){
+    temporalHtml+='<div class="temporal outdated">&#9200; Current: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+' &nbsp;&middot;&nbsp; Stated: '+esc(a.stated_value||a.current_value)+' as of '+esc(a.stated_as_of||'?')+'</div>';
+  } else if(a.category==='CONTRADICTED' && a.current_value){
+    temporalHtml+='<div class="temporal contradicted">&#128203; On record: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+'</div>';
+  }
+  if(a.is_stale){
+    temporalHtml+='<div class="temporal stale">&#9888; Metric may be stale &mdash; last updated '+esc(a.current_as_of||'?')+'</div>';
+  }
+  if(a.is_provisional){
+    temporalHtml+='<div class="temporal provisional">&#8987; Unconfirmed &mdash; auto-extracted, awaiting PM review. <a href="#" onclick="showTab(\'pending\');return false">Review in Pending tab</a></div>';
+  }
+  const metricBadge=a.fact_metric?'<span style="font-size:10px;background:#e9ecef;padding:1px 5px;border-radius:3px;color:#555">'+esc(a.fact_metric)+'</span> ':'';
+
+  const div=document.createElement('div');
+  div.className='alert '+a.category;
+  div.innerHTML='<span class="conf">'+(a.confidence||'')+' confidence</span>'
+    +'<div class="cat '+a.category+'">'+metricBadge+a.category.replace(/_/g,' ')+'</div>'
+    +'<div class="claim">&ldquo;'+esc(a.claim_text)+'&rdquo;</div>'
+    +(ev.source?'<div class="src">&#128196; '+esc(ev.source)+(ev.snippet?' &mdash; '+esc(ev.snippet.slice(0,80)):'')+'</div>':'')
+    +temporalHtml
+    +(a.suggested_response?'<div class="sug">&#128172; '+esc(a.suggested_response)+'</div>':'');
+  box.prepend(div);
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function showTab(name){
+  ['metrics','pending','update'].forEach(t=>{
+    $('panel-'+t).style.display = t===name ? '' : 'none';
+    $('tab-'+t).classList.toggle('active', t===name);
+  });
+  if(name==='pending') loadPending();
+}
+
+// ── KB: metrics ──────────────────────────────────────────────────────────────
+async function loadMetrics(){
+  const r=await fetch('/api/metrics'); const list=await r.json();
+  const sel=$('upd-key');
+  const prev=sel.value;
+  sel.innerHTML='<option value="">-- select metric --</option>';
+  list.forEach(m=>{
+    const o=document.createElement('option');
+    o.value=m.metric_key; o.textContent=m.metric_key;
+    if(m.metric_key===prev) o.selected=true;
+    sel.appendChild(o);
+  });
+  const ml=$('metrics-list'); ml.innerHTML='';
+  list.forEach(m=>{
+    const staleClass=m.is_stale?' stale':'';
+    const provClass=m.provisional?' provisional':'';
+    const staleIcon=m.is_stale?' &#9888;':'';
+    const provIcon=m.provisional?' &#8987;':'';
+    const d=document.createElement('div');
+    d.className='metric-row'+staleClass+provClass;
+    d.style.cursor='pointer';
+    d.innerHTML='<div class="mk">'+esc(m.metric_key)+staleIcon+provIcon+'</div>'
+      +'<div class="val">'+esc(m.value_display)+'</div>'
+      +'<div class="asof">as of '+esc(m.as_of)+' &middot; '+esc(m.source)+'</div>';
+    d.onclick=()=>showHistory(m.metric_key);
+    ml.appendChild(d);
+  });
+}
+
+async function showHistory(mk){
+  const r=await fetch('/api/metrics/'+encodeURIComponent(mk)+'/history');
+  const list=await r.json();
+  const panel=$('metric-history');
+  let rows='';
+  list.forEach((f,i)=>{
+    const provMark=f.provisional?'&#8987; ':'';
+    rows+='<div class="hist-row" style="'+(i===0?'font-weight:700':'')+'">'
+      +'<span style="width:85px">'+esc(f.as_of)+'</span>'
+      +'<span style="width:65px">'+provMark+esc(f.value_display)+'</span>'
+      +'<span style="flex:1;color:#999">'+esc(f.source)+'</span>'
+      +'</div>';
+  });
+  panel.innerHTML='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:4px">'+esc(mk)+' history</div>'
+    +'<div class="hist-rows">'+rows+'</div>';
+  $('upd-key').value=mk;
+}
+
+// ── KB: pending ───────────────────────────────────────────────────────────────
+async function loadPending(){
+  const r=await fetch('/api/pending'); const j=await r.json();
+  const total=j.total||0;
+  const badge=$('pendingBadge');
+  badge.textContent=total; badge.style.display=total>0?'':'none';
+
+  const panel=$('pending-list'); panel.innerHTML='';
+  if(total===0){panel.innerHTML='<div class="empty" style="margin-top:16px">No pending items.</div>';return;}
+
+  // Provisional facts (from authoritative docs — live but unconfirmed)
+  if(j.provisional && j.provisional.length){
+    const hdr=document.createElement('div');
+    hdr.style.cssText='font-size:11px;font-weight:600;color:#0c5460;margin:6px 0 4px';
+    hdr.textContent='Provisional (authoritative — live at reduced confidence)';
+    panel.appendChild(hdr);
+    j.provisional.forEach(f=>{
+      const d=document.createElement('div');
+      d.className='pending-row prov';
+      d.innerHTML='<div class="pk">'+esc(f.metric_key)+' &middot; '+esc(f.source)+'</div>'
+        +'<div class="pval">'+esc(f.value_display)+' <span style="font-weight:normal;color:#666">as of '+esc(f.as_of)+'</span></div>'
+        +'<div class="pactions">'
+        +'<button class="btn-confirm" onclick="confirmFact(\''+f.fact_id+'\',this)">&#10003; Confirm</button>'
+        +'<button class="btn-reject" onclick="rejectFact(\''+f.fact_id+'\',this)">&#10007; Reject</button>'
+        +'</div>';
+      panel.appendChild(d);
+    });
+  }
+
+  // Pending extractions (from derived notes — not yet in fact store)
+  if(j.pending && j.pending.length){
+    const hdr=document.createElement('div');
+    hdr.style.cssText='font-size:11px;font-weight:600;color:#155724;margin:10px 0 4px';
+    hdr.textContent='Pending (derived notes — awaiting acceptance)';
+    panel.appendChild(hdr);
+    j.pending.forEach(p=>{
+      const d=document.createElement('div');
+      d.className='pending-row';
+      d.innerHTML='<div class="pk">'+esc(p.metric_key)+' &middot; '+esc(p.source)+'</div>'
+        +'<div class="pval">'+esc(p.value)+' <span style="font-weight:normal;color:#666">'+esc(p.unit)+' &middot; as of '+esc(p.as_of)+'</span></div>'
+        +'<div class="pactions">'
+        +'<button class="btn-confirm" onclick="acceptPending(\''+p.pending_id+'\',this)">&#10003; Accept</button>'
+        +'<button class="btn-reject" onclick="rejectPending(\''+p.pending_id+'\',this)">&#10007; Reject</button>'
+        +'</div>';
+      panel.appendChild(d);
+    });
+  }
+}
+
+async function confirmFact(factId, btn){
+  const r=await fetch('/api/pending/fact/'+factId+'/confirm',{method:'POST'});
+  if(r.ok){btn.closest('.pending-row').remove();toast('Fact confirmed.');loadMetrics();}
+  else toast('Error confirming fact.');
+  loadPending();
+}
+async function rejectFact(factId, btn){
+  const r=await fetch('/api/pending/fact/'+factId+'/reject',{method:'POST'});
+  if(r.ok){btn.closest('.pending-row').remove();toast('Fact rejected.');}
+  else toast('Error rejecting fact.');
+  loadPending();
+}
+async function acceptPending(pendingId, btn){
+  const r=await fetch('/api/pending/'+pendingId+'/accept',{method:'POST'});
+  if(r.ok){btn.closest('.pending-row').remove();toast('Accepted into fact store.');loadMetrics();}
+  else toast('Error accepting.');
+  loadPending();
+}
+async function rejectPending(pendingId, btn){
+  const r=await fetch('/api/pending/'+pendingId+'/reject',{method:'POST'});
+  if(r.ok){btn.closest('.pending-row').remove();toast('Rejected.');}
+  else toast('Error rejecting.');
+  loadPending();
+}
+
+// ── KB: manual sync ───────────────────────────────────────────────────────────
+async function refreshKB(){
+  $('syncBar').textContent='Syncing...';
+  try{
+    const r=await fetch('/api/sync',{method:'POST'}); const j=await r.json();
+    $('syncBar').textContent=`Synced: +${j.new} new  ~${j.modified} mod  ${j.skipped} skip  ${j.pending_extractions} queued`;
+    loadMetrics(); loadPending();
+  } catch(e){
+    $('syncBar').textContent='Sync failed';
+  }
+}
+
+// ── KB: update form ────────────────────────────────────────────────────────────
+async function submitUpdate(){
+  const metric_key=$('upd-key').value;
+  const value=$('upd-val').value.trim();
+  const as_of=$('upd-date').value||null;
+  const source=$('upd-source').value.trim()||'dashboard_update';
+  if(!metric_key||!value){toast('Select a metric and enter a value.');return;}
+  const r=await fetch('/api/metrics/update',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({metric_key,value,as_of,source})
+  });
+  const j=await r.json();
+  if(r.ok){
+    toast('Updated '+j.metric_key+': '+j.value_display+' as of '+j.as_of);
+    $('upd-val').value='';
+    loadMetrics();
+  } else {
+    toast('Error: '+(j.error||'unknown'));
+  }
+}
+
+// ── Session controls ─────────────────────────────────────────────────────────
+async function start(){
+  const r=await fetch('/api/session/start',{method:'POST'});
+  const j=await r.json(); sid=j.session_id;
+  history.replaceState(null,'','/?session='+sid);
+  $('cmd').innerHTML='<div class="cmd">Run the audio streamer:\npy phase1_audio_streaming.py --server '+location.origin+' --session '+sid+'</div>';
+  $('alerts').innerHTML='<div class="empty">Listening... alerts will appear here.</div>';
+  startedUI(); connectWS(sid);
+}
+async function end(){ if(!sid)return; await fetch('/api/session/'+sid+'/end',{method:'POST'}); }
+function startedUI(){ $('startBtn').style.display='none'; $('endBtn').style.display='inline-block'; $('status').textContent='listening'; }
+function endedUI(){ sid=null; if(ws){ws.close();ws=null;} $('endBtn').style.display='none'; $('startBtn').style.display='inline-block'; $('status').textContent='idle'; $('cmd').innerHTML=''; }
+
+// ── Meeting history ────────────────────────────────────────────────────────────
+async function loadHistory(){
+  const r=await fetch('/api/meetings'); const list=await r.json();
+  $('history').innerHTML=list.length?'':'<div class="empty" style="margin-top:10px">No saved meetings yet.</div>';
+  list.forEach(m=>{
+    const d=document.createElement('div'); d.className='mtg';
+    d.innerHTML='<span class="del" data-n="'+esc(m.name)+'">&#x2715;</span>'
+      +'<div class="nm">'+esc(m.name)+'</div>'
+      +'<div class="meta">'+m.total_claims+' claims &middot; &#x1F534; '+m.contradicted+' &middot; &#x26A0; '+m.critical_issues+' crit</div>';
+    d.onclick=ev=>{ if(ev.target.classList.contains('del')){delMtg(m.name);ev.stopPropagation();} else viewMtg(m.name); };
+    $('history').appendChild(d);
+  });
+}
+async function viewMtg(name){
+  const r=await fetch('/api/meetings/'+encodeURIComponent(name)); const j=await r.json();
+  const s=(j.report&&j.report.summary)||{};
+  $('modalBox').innerHTML='<h2>'+esc(name)+'</h2>'
+    +'<p>'+(s.total_claims||0)+' claims &middot; &#x1F7E2; '+(s.verified||0)+' &middot; &#x1F534; '+(s.contradicted||0)+' &middot; &#x1F7E1; '+(s.unverified||0)+' &middot; &#x23F0; '+(s.outdated||0)+' &middot; &#x2753; '+(s.needs_clarification||0)+'</p>'
+    +'<pre style="white-space:pre-wrap;font-size:13px">'+esc((j.transcript||'').slice(0,4000))+'</pre>'
+    +'<button onclick="document.getElementById(\'modal\').style.display=\'none\'">Close</button>';
+  $('modal').style.display='flex';
+}
+async function delMtg(name){ if(!confirm('Delete '+name+'?'))return; await fetch('/api/meetings/'+encodeURIComponent(name),{method:'DELETE'}); loadHistory(); }
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function toast(t){ const e=document.createElement('div'); e.className='toast'; e.textContent=t; document.body.appendChild(e); setTimeout(()=>e.remove(),4000); }
+function esc(s){ return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+$('startBtn').onclick=start; $('endBtn').onclick=end;
+loadHistory(); loadMetrics(); loadPending();
+if(params.get('session')){ sid=params.get('session'); startedUI(); connectWS(sid); }
+</script>
+</body>
+</html>
