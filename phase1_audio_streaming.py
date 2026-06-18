@@ -33,8 +33,8 @@ from queue import Queue, Empty
 
 RATE = 16000
 FRAME_MS = 30
-MIN_CHUNK_SEC = 4.0
-MAX_CHUNK_SEC = 6.0
+MIN_CHUNK_SEC = 2.5
+MAX_CHUNK_SEC = 4.0
 OVERLAP_SEC = 0.5
 SILENCE_RATIO = 0.3      # frame is silence if RMS < ratio * rolling median
 MIN_ABS_RMS = 50.0       # absolute floor so quiet-but-present speech isn't gated

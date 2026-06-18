@@ -6,16 +6,19 @@ For each incoming audio chunk it:
 
   1. (VAD backstop) skips near-silent chunks to avoid cost + Whisper hallucination
   2. transcribes the chunk with whisper-1  — NO priming
-       (the spike showed rolling-transcript priming makes whisper-1 hallucinate;
-        and whisper-1 preserved numbers/declarations better than the gpt-4o family,
-        which is what matters for claim validation)
   3. appends to the per-session rolling transcript
   4. detects only NEW claims (phase3_claims.IncrementalClaimDetector)
-  5. validates each new claim against the KB + fact store (phase2_validator.validate_claim)
+     — now returns Claim objects with pre-tagged metric_key/value/unit (Option B)
+  5. validates all claims in this chunk CONCURRENTLY via asyncio.gather (Option B)
+     — passes pre-supplied tag to validate_claim() to skip the tag_metric() call
   6. returns alert objects (schema = REQUIREMENTS_REALTIME.md §7.1 + temporal fields)
 
-Transport (WebSocket) and report-saving live elsewhere; this module is pure
-pipeline so it can be unit-tested without a server.
+Option B changes vs. the original:
+  - ingest_chunk() and finalize() are now async
+  - validation of a chunk's claims runs concurrently (asyncio.gather)
+  - pre-supplied tags from the merged detect+tag call are passed to validate_claim()
+  - server call-site must await these methods directly (no run_in_threadpool wrapper)
+  - shared-state mutation (self.alerts, self.claim_count) is guarded by threading.Lock
 """
 
 import io
@@ -24,16 +27,18 @@ import time
 import wave
 import array
 import uuid
+import asyncio
 import hashlib
 import tempfile
+import threading
 from datetime import datetime, timezone
 
-from phase3_claims import IncrementalClaimDetector
+from phase3_claims import IncrementalClaimDetector, Claim
 from phase2_validator import validate_claim, get_priority
 
 WHISPER_MODEL = "whisper-1"
 LANGUAGE = "en"
-SILENCE_RMS = 150        # backstop VAD gate; the audio streamer does the real VAD
+SILENCE_RMS = 150        # backstop VAD gate
 WHISPER_RETRIES = 2      # NFR-10: retry transient API failures with backoff
 
 
@@ -101,42 +106,60 @@ class LiveSession:
                  session_id=None, recovery_dir=None, db_path=None):
         self.id = session_id or uuid.uuid4().hex[:12]
         self.started_at = datetime.now(timezone.utc).isoformat()
-        self.status = "listening"          # listening | processing | ended
+        self.status = "listening"
         self.rolling_transcript = ""
         self.alerts = []
         self.claim_count = 0
         self.kb = kb_collection
         self.openai = openai_client
-        self.db_path = db_path             # Geppetto 3: path to SQLite fact store
+        self.db_path = db_path
         self.detector = IncrementalClaimDetector(client=anthropic_client)
-        # NFR-11: periodic transcript flush so an in-progress meeting is
-        # recoverable if the server is killed mid-session.
+        self._tlock = threading.Lock()   # guards self.alerts + self.claim_count
         self.recovery_path = (os.path.join(recovery_dir, f".live_{self.id}.txt")
                               if recovery_dir else None)
 
-    def ingest_chunk(self, wav_bytes):
-        """Process one audio chunk. Returns list of NEW alert dicts (may be empty).
-        Raises on a persistent transcription failure so the caller can warn and
-        continue with the next chunk (NFR-10)."""
+    async def ingest_chunk(self, wav_bytes):
+        """
+        Process one audio chunk. Returns list of NEW alert dicts (may be empty).
+        Async: STT runs in a thread; this chunk's claims are validated concurrently.
+        Raises on persistent transcription failure so caller can warn and continue.
+        """
         self.status = "processing"
         rms = rms_of_wav(wav_bytes)
         if rms is not None and rms < SILENCE_RMS:
             self.status = "listening"
-            return []                      # VAD backstop: skip silence
+            return []
         try:
-            text = transcribe_chunk(self.openai, wav_bytes)
+            text = await asyncio.to_thread(transcribe_chunk, self.openai, wav_bytes)
         finally:
             self.status = "listening"
+
         if text:
             self.rolling_transcript = (self.rolling_transcript + " " + text).strip()
             self._flush_recovery()
-        new_claims = self.detector.feed_text(text)
-        return self._validate(new_claims)
 
-    def finalize(self):
-        """Flush any buffered trailing claim, mark ended. Returns (transcript, alerts).
-        Report building + disk save is the server's job (phase3_storage)."""
-        self._validate(self.detector.flush())
+        claims = self.detector.feed_text(text)
+        if not claims:
+            return []
+
+        # Validate all claims in this chunk concurrently
+        results = await asyncio.gather(
+            *[asyncio.to_thread(self._validate_one, c) for c in claims],
+            return_exceptions=False,
+        )
+        return [a for a in results if a is not None]
+
+    async def finalize(self):
+        """
+        Flush any buffered trailing claims, mark ended.
+        Returns (transcript, alerts).
+        """
+        trailing = self.detector.flush()
+        if trailing:
+            await asyncio.gather(
+                *[asyncio.to_thread(self._validate_one, c) for c in trailing],
+                return_exceptions=False,
+            )
         self.status = "ended"
         self._clear_recovery()
         return self.rolling_transcript, self.alerts
@@ -158,31 +181,41 @@ class LiveSession:
                 pass
 
     def state(self):
-        """In-memory session snapshot (REQUIREMENTS_REALTIME.md §7.2)."""
         return {
-            "session_id": self.id,
-            "started_at": self.started_at,
-            "status": self.status,
+            "session_id":        self.id,
+            "started_at":        self.started_at,
+            "status":            self.status,
             "rolling_transcript": self.rolling_transcript,
-            "alerts": self.alerts,
-            "claim_count": self.claim_count,
+            "alerts":            self.alerts,
+            "claim_count":       self.claim_count,
         }
 
-    # ----- internals -----
-    def _validate(self, claims):
-        out = []
-        for claim in claims:
-            try:
-                result = validate_claim(claim, self.kb, db_path=self.db_path)
-            except Exception:
-                continue                   # one bad claim shouldn't break the chunk
-            alert = self._build_alert(claim, result)
+    # ----- internals (called from threads via asyncio.to_thread) -----
+
+    def _validate_one(self, claim: Claim):
+        """
+        Validate a single Claim. Called in a thread pool via asyncio.to_thread.
+        Passes the pre-supplied tag to skip the tag_metric() round-trip (Option B).
+        Returns an alert dict, or None on failure.
+        """
+        try:
+            result = validate_claim(
+                claim.text, self.kb,
+                db_path=self.db_path,
+                tag=claim.tag,
+            )
+        except Exception:
+            return None
+
+        alert = self._build_alert(claim.text, result)
+
+        with self._tlock:
             self.alerts.append(alert)
             self.claim_count += 1
-            out.append(alert)
-        return out
 
-    def _build_alert(self, claim, result):
+        return alert
+
+    def _build_alert(self, claim_text, result):
         conf = result.get("confidence", 0.5)
         try:
             conf_f = float(conf)
@@ -190,19 +223,18 @@ class LiveSession:
             conf_f = 0.5
 
         alert = {
-            "claim_id":        hashlib.sha1(claim.encode()).hexdigest()[:10],
-            "claim_text":      claim,
-            "category":        result.get("category", "UNVERIFIED"),
-            "confidence":      confidence_label(conf),
-            "confidence_score":conf_f,
-            "evidence":        self._evidence(claim, result),
+            "claim_id":           hashlib.sha1(claim_text.encode()).hexdigest()[:10],
+            "claim_text":         claim_text,
+            "category":           result.get("category", "UNVERIFIED"),
+            "confidence":         confidence_label(conf),
+            "confidence_score":   conf_f,
+            "evidence":           self._evidence(claim_text, result),
             "suggested_response": result.get("pm_action_suggested", ""),
-            "reasoning":       result.get("reasoning", ""),
-            "priority":        get_priority(result.get("category", "UNVERIFIED"), conf_f),
-            "timestamp":       datetime.now(timezone.utc).isoformat(),
+            "reasoning":          result.get("reasoning", ""),
+            "priority":           get_priority(result.get("category", "UNVERIFIED"), conf_f),
+            "timestamp":          datetime.now(timezone.utc).isoformat(),
         }
 
-        # Geppetto 3 temporal fields (present only when temporal path was used)
         for key in ("fact_metric", "current_value", "current_value_display",
                     "current_as_of", "stated_value", "stated_as_of",
                     "is_stale", "is_provisional"):
@@ -211,8 +243,7 @@ class LiveSession:
 
         return alert
 
-    def _evidence(self, claim, result):
-        """Attach source snippets from the KB for sources cited by the validator."""
+    def _evidence(self, claim_text, result):
         sources = list(dict.fromkeys(
             (result.get("supporting_sources") or []) +
             (result.get("conflicting_sources") or [])
@@ -223,7 +254,7 @@ class LiveSession:
                 continue
             try:
                 res = self.kb.query(
-                    query_texts=[claim], n_results=1,
+                    query_texts=[claim_text], n_results=1,
                     where={"source": src}
                 )
                 if res["documents"] and res["documents"][0]:

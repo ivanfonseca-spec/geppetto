@@ -1,9 +1,9 @@
-# Geppetto 3 — Temporal Truth (Design)
+# Geppetto 3 — Temporal Truth Layer (Design)
 
-**Status:** Design draft
-**Predecessor:** Geppetto 2 (real-time Meeting Truth Layer — this works and is stable)
+**Status:** Built and operational
+**Predecessor:** Geppetto 2 (real-time Meeting Truth Layer — stable, carried forward)
 **Owner:** Ivan Fonseca
-**Theme:** Make the knowledge base understand that facts change over time.
+**Theme:** Make the knowledge base understand that facts change over time, and auto-update from your project documents.
 
 ---
 
@@ -13,163 +13,159 @@ Geppetto 2 treats the knowledge base as a single, current snapshot. It answers
 "does this claim match what the KB says *right now*?" — and it does that well.
 
 But real project facts **evolve**: QA progress goes 15% → 23% → 34% → 82%; a
-deadline slips from June 21 to June 28; a decision gets reversed. Geppetto 2 has
-no concept of this:
+deadline slips; a decision gets reversed. Geppetto 2 has no concept of this:
 
 - **The KB is static.** It only knows what was last ingested. If progress moved
-  to 23% but the KB still says 15%, a *correct* statement ("QA is 23%") is flagged
-  CONTRADICTED — a false alarm. The tool is only ever as current as its last update.
-- **No freshness data.** Document metadata is just `{source, chunk, type}` — there
-  is no date. So even though an OUTDATED category exists, the system can't reliably
-  tell which of two values is newer, or resolve conflicts between a stale source and
-  a current one. (This is the NFR-8 gap flagged but never built in Geppetto 2.)
+  to 23% but the KB still says 15%, a correct statement is flagged CONTRADICTED — a false alarm.
+- **No freshness data.** Document metadata had no date, so the OUTDATED category
+  existed but was unreliable.
+- **Manual updates only.** There was no way to feed project documents and have the
+  system learn from them automatically.
 
-Geppetto 3's job: manage facts **as a timeline**, so claims are judged against the
-*current* truth, superseded values are recognized as OUTDATED (not wrong), and the
-KB can advance over time without losing history.
+Geppetto 3's job: manage facts **as a timeline**, auto-ingest documents, and judge
+claims against the *current* truth with provenance and freshness awareness.
 
 ---
 
-## 2. Core idea — separate prose from facts
-
-Keep two layers of knowledge:
-
-1. **Documents (prose context)** — as in Geppetto 2: SOW, ADRs, transcripts,
-   indexed in a vector store for semantic background.
-2. **Facts (structured, versioned)** — a new, dated time-series of canonical
-   metrics. Each fact is a key → value with an `as_of` date and a source. Updates
-   **append a new version** rather than overwrite, so history is preserved.
-
-Example fact timeline for one metric:
+## 2. Architecture overview
 
 ```
-metric_key: qa.tests_passed_pct
-  { value: 15, as_of: 2026-06-08, source: standup_notes }
-  { value: 23, as_of: 2026-06-11, source: qa_status_report }
-  { value: 34, as_of: 2026-06-13, source: qa_status_report }
-  { value: 82, as_of: 2026-06-14, source: qa_status_report }   <- current
+ ┌─────────────────────────────────────────────────────────┐
+ │                    docs/  directory                      │
+ │  .md  .txt  .pdf  .docx  (authoritative)                │
+ │  docs/notes/  (derived — meeting notes)                  │
+ └──────────────────┬──────────────────────────────────────┘
+                    │  kb_sync (incremental, on startup + /api/sync)
+          ┌─────────▼─────────┐        ┌─────────────────┐
+          │  ChromaDB          │        │  SQLite          │
+          │  (prose chunks)    │        │  facts store     │
+          │  semantic search   │        │  versioned       │
+          └─────────┬─────────┘        │  timeline        │
+                    │                  └────────┬─────────┘
+                    └──────────┬───────────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Validator           │
+                    │  temporal path first │
+                    │  prose fallback      │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  Dashboard           │
+                    │  Live alerts         │
+                    │  KB / Pending tab    │
+                    └─────────────────────┘
 ```
-
-The "current truth" for a metric is simply the version with the **latest `as_of`**.
-Older versions are retained as history and are what make OUTDATED detection possible.
 
 ---
 
-## 3. Data model
+## 3. Two-layer knowledge store
 
-**Fact record**
+| Layer | Technology | Purpose |
+|---|---|---|
+| Prose context | ChromaDB (vector store) | Semantic background — SOW, ADRs, transcripts |
+| Versioned facts | SQLite (`facts` table) | Dated metric timeline — what changed and when |
 
-```json
-{
-  "fact_id": "uuid",
-  "metric_key": "qa.tests_passed_pct",   // canonical, dotted
-  "entity": "QA",                          // human label
-  "value": 82,
-  "unit": "percent",                       // percent | date | bool | money | text
-  "as_of": "2026-06-14",                   // when the fact was true
-  "source": "qa_status_report.md",
-  "ingested_at": "2026-06-15T09:00:00Z",
-  "supersedes": "fact_id-of-prev"          // optional link to prior version
-}
-```
-
-**Store.** A small local **SQLite** time-series table (`facts`) sits alongside the
-existing Chroma vector store. Chroma still handles prose retrieval; SQLite handles
-the versioned numeric/dated truth. (Postgres + pgvector remains the future scale
-option, as noted in the Geppetto 2 spec.)
-
-**Why both:** prose retrieval is good at "what does the SOW say about the database,"
-but it's bad at "what is the single most recent QA number." A structured fact store
-answers the second precisely and cheaply, and gives us reliable dates.
+Chroma answers "what does the SOW say about the database." SQLite answers "what is the current QA number and when was it last updated." Both are needed.
 
 ---
 
-## 4. Validation flow (freshness-aware)
+## 4. Document ingest (kb_sync)
 
-For each detected claim:
+`kb_sync.py` watches the `docs/` directory and runs an incremental sync:
 
-1. **Detect** the claim (unchanged from Geppetto 2).
-2. **Link** it to a metric — map "QA is at 80%" → `qa.tests_passed_pct`. Done by a
-   lightweight LLM tagging step (claim → metric_key + extracted value/unit), backed
-   by the list of known metric keys. Falls back to prose retrieval if no metric matches.
-3. **Resolve against the timeline:**
+- **On startup** (blocking, before serving requests)
+- **Manually** via `POST /api/sync` or the Sync button in the dashboard
+- **Incremental** — tracks a `.geppetto_manifest.json`; only new or changed files are re-processed
+- **Two provenance tiers:**
+  - `docs/` (root and subdirs except `notes/`) → **authoritative** — committed immediately as provisional facts
+  - `docs/notes/` → **derived** (auto-generated meeting notes) — held in the pending queue until PM accepts
+
+Supported file types: `.md`, `.txt`, `.pdf` (pymupdf), `.docx` (python-docx). Excel optional via `ENABLE_XLSX=1`.
+
+---
+
+## 5. Auto-discovered metric catalog
+
+Metrics are not hardcoded. On each sync, Haiku extracts `{metric_key, value, unit, as_of}` tuples from each document. Known keys are injected into the extraction prompt on every pass to keep key naming stable across syncs. Keys follow `domain.attribute` convention (e.g., `qa.tests_passed_pct`, `budget.total`).
+
+A small seed catalog of common keys (`facts.py: METRIC_CATALOG`) provides baseline stability and phrase hints for the claim tagger.
+
+---
+
+## 6. Human-in-the-loop review (Pending tab)
+
+Auto-extracted facts are never committed blindly:
+
+| Source tier | What happens | Confidence |
+|---|---|---|
+| Authoritative doc | Committed immediately as **provisional** | Capped at 0.60 for numeric until PM confirms |
+| Derived (meeting notes) | Held in **pending queue** — not used until PM accepts | N/A until accepted |
+
+The PM reviews both in the **Pending tab** of the dashboard:
+- **Provisional facts** (from authoritative docs): Confirm / Reject
+- **Pending extractions** (from meeting notes): Accept / Reject
+
+Rejected items are remembered — they won't re-surface on the next sync.
+
+---
+
+## 7. Validation flow (freshness-aware)
+
+For each detected claim (Option B pipeline — merged into one Haiku call):
+
+1. **Detect + tag** — one Haiku call returns claim text AND metric_key/value/unit
+2. **Resolve against the timeline:**
    - matches the **latest** version → **VERIFIED**
-   - matches a **superseded** (older) version → **OUTDATED** — and we tell the PM the
-     current value ("that was true on June 8; it's 82% as of June 14")
-   - conflicts with the latest and matches no version → **CONTRADICTED**
-   - no matching metric/fact → **UNVERIFIED** (fall back to prose KB)
-   - partial / ambiguous / temporal → **NEEDS_CLARIFICATION**
-4. **Confidence (NFR-6)** computed, not guessed, from: recency of the matching fact,
-   agreement across sources, and retrieval/match score.
-
-This finally makes OUTDATED a first-class, reliable outcome instead of an accident
-of what the retriever surfaced.
+   - matches a **superseded** version → **OUTDATED** — current value surfaced to PM
+   - conflicts with latest, no historical match → **CONTRADICTED**
+   - no metric match → **UNVERIFIED** (falls back to prose KB via ChromaDB)
+3. **Confidence caps:**
+   - Provisional numeric fact → max 0.60 until confirmed
+   - Stale fact (>7 days old) → max 0.55
+4. **Concurrent validation** — multiple claims in one chunk are validated in parallel (asyncio.gather), not sequentially
 
 ---
 
-## 5. Freshness rules (NFR-8, made concrete)
+## 8. Performance (Option A + B)
 
-- **Current = newest `as_of`** per metric_key.
-- **Staleness guard:** if the newest fact for a metric is older than a configurable
-  window (e.g., 7 days), drop confidence to Low and surface "this metric may be
-  stale (last updated June 8)" rather than asserting VERIFIED/CONTRADICTED.
-- **Source precedence:** when two sources report the same metric for the same date,
-  use a per-metric precedence list (e.g., `qa_status_report` outranks `standup_notes`).
-- **No fact ≠ wrong:** absence of a fact is UNVERIFIED, never CONTRADICTED.
-
----
-
-## 6. How facts get updated (the part Geppetto 2 deferred)
-
-Three options, in increasing ambition — Geppetto 3 should start with the first two:
-
-1. **`update_fact()` API + dashboard affordance** — explicit: "QA is now 90% as of
-   today." Appends a version. Simple, safe, auditable.
-2. **Document re-ingestion with fact extraction** — when an updated doc is added, a
-   fact-extraction pass pulls dated metrics out of it automatically.
-3. **Meeting write-back (human-in-the-loop)** — if a meeting says "QA is now 90%,"
-   offer the PM a one-click "update the KB to 90%?" This is the write-back workflow
-   Geppetto 2 listed as a non-goal; powerful but must be **confirmed**, never automatic,
-   with an audit trail.
+| Stage | Before | After A+B |
+|---|---|---|
+| Chunk fill | 4–6s | 2.5–4s |
+| STT (Whisper) | 1–2s | 1–2s (async, non-blocking) |
+| Detect + tag | 0.7s + 0.7s (2 calls) | 0.9s (1 merged call) |
+| Validate N claims | N × 0.7s sequential | 0.7s concurrent (parallel) |
+| **Total lag** | **6–12s** | **~3–5s** |
 
 ---
 
-## 7. What carries over from Geppetto 2 (reuse, don't rebuild)
+## 9. End-of-meeting notes
+
+When a session ends, Haiku automatically generates structured meeting notes saved to two places:
+
+- `docs/notes/YYYY-MM-DD-<slug>.md` — ingested as derived tier on next sync
+- `meetings/<folder>/notes.md` — accessible from meeting history
+
+Note format: Current Status / Key Achievements / Upcoming Priorities / Risks & Issues / Decisions & Support Needed / Action Items.
+
+---
+
+## 10. What carries over from Geppetto 2
 
 | Component | Change in Geppetto 3 |
 |---|---|
-| Audio streamer, transcription, WebSocket, dashboard | **Reuse as-is** |
-| Incremental claim detector | Reuse + add a metric-tagging step |
-| Validator | **Extend**: timeline/freshness-aware resolution |
-| Knowledge base | **Add** structured `facts` store (SQLite) + `as_of` dates; keep Chroma for prose |
-| Storage / history / reports | Reuse; reports gain "current vs. as-stated" context |
-
-The real-time machinery is done. Geppetto 3 is mostly a **KB + validator** evolution.
-
----
-
-## 8. Open design decisions (to settle before/while building)
-
-1. **Metric catalog** — hand-define the metric keys (qa %, release date, db choice,
-   budget…) up front, or auto-discover them from documents? (Lean: seed a small
-   hand-defined catalog, allow growth.)
-2. **Write-back trust** — do we let meetings update the KB at all (option 3), and if
-   so, always human-confirmed? (Lean: yes, confirmed-only, with audit log.)
-3. **Conflicting current sources** — when SOW and QA report disagree *today*,
-   precedence list vs. surfacing both to the PM. (Lean: precedence + show the conflict.)
-4. **Numeric fragility** — transcribed numbers are unreliable (Geppetto 2 STT
-   finding: "6 to 8" → "628"). Confidence should reflect transcription uncertainty for
-   numeric claims, and maybe ask for confirmation on high-stakes numbers.
+| Audio streamer | Reused; now auto-launched by server on session start |
+| Whisper STT | Unchanged (whisper-1, no priming) |
+| WebSocket / dashboard | Extended with KB panel, Pending tab, sync button |
+| Incremental claim detector | Extended — now returns `Claim` objects with pre-tagged metrics |
+| Validator | Extended — freshness-aware, accepts pre-supplied tags |
+| Storage / history / reports | Reused; reports gain "current vs. as-stated" context |
 
 ---
 
-## 9. Acceptance shape (what "done" looks like)
+## 11. Constraints (unchanged from Geppetto 2)
 
-- Feeding the same metric at increasing values over time and asking about each:
-  the latest reads VERIFIED, an older value reads OUTDATED **with the current value
-  surfaced**, and a never-seen value reads CONTRADICTED.
-- A metric not updated in >7 days is flagged stale (Low confidence) rather than
-  asserted.
-- `update_fact()` advances a metric without rebuilding the whole KB, and the change
-  is visible in the next validation.
-- Everything Geppetto 2 did still works (real-time alerts, history, save/load).
+- STT: **whisper-1 only** — gpt-4o family corrupts numbers ("6 to 8" → "628")
+- Local-first, Windows, no GPU
+- Cloud calls: OpenAI (Whisper STT) + Anthropic (Haiku for all LLM tasks)
+- API keys in `.env`, never committed to git

@@ -15,7 +15,9 @@ Then open http://127.0.0.1:8000  (and run phase1_audio_streaming.py to feed audi
 """
 
 import os
+import sys
 import shutil
+import subprocess
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -46,6 +48,7 @@ manager = ConnectionManager()
 openai_client    = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 sessions = {}                        # session_id -> LiveSession
+streamers = {}                       # session_id -> subprocess.Popen
 
 # Paths
 FACTS_DB  = "./facts.db"
@@ -113,6 +116,20 @@ async def session_start():
     s = LiveSession(kb_collection=validator.kb_collection, openai_client=openai_client,
                     recovery_dir=str(storage.base_dir), db_path=FACTS_DB)
     sessions[s.id] = s
+
+    # Auto-launch audio streamer as a subprocess
+    streamer_script = os.path.join(_HERE, "phase1_audio_streaming.py")
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, streamer_script,
+             "--server", "http://127.0.0.1:8000",
+             "--session", s.id],
+            cwd=_HERE,
+        )
+        streamers[s.id] = proc
+    except Exception as e:
+        print(f"[streamer] Could not auto-launch: {e}")
+
     return {"session_id": s.id}
 
 
@@ -124,7 +141,7 @@ async def session_chunk(sid: str, request: Request):
     body = await request.body()
     await manager.send_status(sid, "processing", session.claim_count)
     try:
-        alerts = await run_in_threadpool(session.ingest_chunk, body)
+        alerts = await session.ingest_chunk(body)
     except Exception:
         # persistent transcription failure on this chunk -- warn, keep session alive
         await manager.send_warning(sid, "Transcription hiccup - continuing")
@@ -141,7 +158,7 @@ async def session_end(sid: str):
     session = sessions.get(sid)
     if not session:
         return JSONResponse(status_code=404, content={"error": "unknown session"})
-    await run_in_threadpool(session.finalize)
+    await session.finalize()
     folder = await run_in_threadpool(build_and_save, session)
 
     # Generate end-of-meeting notes → docs/notes/ + meetings/<folder>/
@@ -160,6 +177,12 @@ async def session_end(sid: str):
     await manager.send_ended(sid, folder)
     manager.clear_session(sid)
     sessions.pop(sid, None)
+
+    # Stop the auto-launched streamer if still running
+    proc = streamers.pop(sid, None)
+    if proc and proc.poll() is None:
+        proc.terminate()
+
     return {"folder_name": folder, "notes": notes_result.get("filename")}
 
 

@@ -285,7 +285,8 @@ Respond ONLY with valid JSON (no markdown, no extra text):
 # MAIN VALIDATE FUNCTION
 # ============================================================================
 
-def validate_claim(claim: str, kb_collection, db_path: str = None) -> dict:
+def validate_claim(claim: str, kb_collection, db_path: str = None,
+                   tag: dict = None) -> dict:
     """
     Freshness-aware claim validation.
 
@@ -297,6 +298,9 @@ def validate_claim(claim: str, kb_collection, db_path: str = None) -> dict:
         claim:         The claim text to validate.
         kb_collection: ChromaDB collection (always available as fallback).
         db_path:       Path to the SQLite fact store. Optional; enables temporal path.
+        tag:           Pre-supplied metric tag dict (metric_key, value, unit) from
+                       the merged detect+tag call (Option B). If provided, skips the
+                       internal tag_metric() Haiku call, saving one round-trip.
 
     Returns:
         Dict with: category, confidence, supporting_sources, conflicting_sources,
@@ -305,9 +309,10 @@ def validate_claim(claim: str, kb_collection, db_path: str = None) -> dict:
     """
     # Temporal path
     if db_path and os.path.exists(db_path):
-        tag = tag_metric(claim)
-        if tag and tag.get("metric_key"):
-            return _validate_temporal(claim, tag, db_path, kb_collection)
+        # Use pre-supplied tag if available, otherwise call tag_metric()
+        resolved_tag = tag if (tag and tag.get("metric_key")) else tag_metric(claim)
+        if resolved_tag and resolved_tag.get("metric_key"):
+            return _validate_temporal(claim, resolved_tag, db_path, kb_collection)
 
     # Prose path (Geppetto 2 fallback)
     return _validate_prose(claim, kb_collection)
