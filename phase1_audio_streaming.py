@@ -36,8 +36,8 @@ FRAME_MS = 30
 MIN_CHUNK_SEC = 4.0
 MAX_CHUNK_SEC = 6.0
 OVERLAP_SEC = 0.5
-SILENCE_RATIO = 0.5      # frame is silence if RMS < ratio * rolling median
-MIN_ABS_RMS = 120.0      # absolute floor so quiet-but-present speech isn't gated
+SILENCE_RATIO = 0.3      # frame is silence if RMS < ratio * rolling median
+MIN_ABS_RMS = 50.0       # absolute floor so quiet-but-present speech isn't gated
 
 
 # ----------------------------------------------------------------------------
@@ -168,7 +168,7 @@ def run(server, session_id=None, max_seconds=None):
     import pyaudio
 
     sid = session_id or start_session(server)
-    device = find_vb_cable(pyaudio)
+    device = None  # use system default input (Jabra mic)
 
     # background sender so capture isn't blocked by the network
     q = Queue()
@@ -216,7 +216,7 @@ def run(server, session_id=None, max_seconds=None):
         print("\nStopping…")
     finally:
         tail = chunker.flush()
-        if tail and not tail["silent"]:
+        if tail and tail["dur"] > 0.5:  # send anything > 0.5s on exit
             q.put(chunk_to_wav_bytes(tail["samples"]))
         stream.stop_stream(); stream.close(); p.terminate()
         stop.set(); t.join(timeout=15)
