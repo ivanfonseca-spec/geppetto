@@ -157,18 +157,40 @@ def find_vb_cable(pyaudio_mod):
             break
     p.terminate()
     if idx is None:
-        sys.exit("VB-Cable not found. Install it and set CABLE Input as default playback.")
+        print("[warn] VB-Cable not found — falling back to system default microphone. "
+              "(Install VB-Cable and set CABLE Input as default playback for full loopback.)")
+        return None  # None = system default input device
     return idx
+
+
+def list_devices(pyaudio_mod):
+    p = pyaudio_mod.PyAudio()
+    print("\nAvailable input devices:")
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info["maxInputChannels"] > 0:
+            print(f"  [{i}] {info['name']}")
+    p.terminate()
 
 
 # ----------------------------------------------------------------------------
 # main capture loop
 # ----------------------------------------------------------------------------
-def run(server, session_id=None, max_seconds=None):
+def run(server, session_id=None, max_seconds=None, device_mode="vbcable"):
     import pyaudio
 
+    if device_mode == "list":
+        list_devices(pyaudio)
+        return
+
     sid = session_id or start_session(server)
-    device = None  # use system default input (Jabra mic)
+
+    if device_mode == "mic":
+        device = None  # system default mic (Jabra)
+        print("Capture mode: system default microphone")
+    else:
+        device = find_vb_cable(pyaudio)  # loopback — all call participants
+        print(f"Capture mode: VB-Cable (device index {device})")
 
     # background sender so capture isn't blocked by the network
     q = Queue()
@@ -229,8 +251,18 @@ def main():
     ap.add_argument("--server", default="http://localhost:8000")
     ap.add_argument("--session", default=None, help="attach to an existing session id")
     ap.add_argument("--max-seconds", type=int, default=None)
+    ap.add_argument(
+        "--device", default="vbcable",
+        choices=["vbcable", "mic", "list"],
+        help=(
+            "vbcable (default): capture all call audio via VB-Cable loopback; "
+            "mic: use system default microphone (Jabra); "
+            "list: print available input devices and exit"
+        )
+    )
     args = ap.parse_args()
-    run(args.server, session_id=args.session, max_seconds=args.max_seconds)
+    run(args.server, session_id=args.session, max_seconds=args.max_seconds,
+        device_mode=args.device)
 
 
 if __name__ == "__main__":

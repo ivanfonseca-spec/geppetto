@@ -16,6 +16,7 @@ Then open http://127.0.0.1:8000  (and run phase1_audio_streaming.py to feed audi
 
 import os
 import sys
+import time
 import shutil
 import subprocess
 
@@ -118,15 +119,26 @@ async def session_start():
     sessions[s.id] = s
 
     # Auto-launch audio streamer as a subprocess
+    # AUDIO_DEVICE in .env controls capture mode:
+    #   vbcable (default) — loopback, captures all call participants via VB-Cable
+    #   mic               — system default mic only (Jabra)
+    audio_device = os.getenv("AUDIO_DEVICE", "mic")
     streamer_script = os.path.join(_HERE, "phase1_audio_streaming.py")
     try:
         proc = subprocess.Popen(
-            [sys.executable, streamer_script,
+            [sys.executable, "-u", streamer_script,
              "--server", "http://127.0.0.1:8000",
-             "--session", s.id],
+             "--session", s.id,
+             "--device", audio_device],
             cwd=_HERE,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         streamers[s.id] = proc
+        # Surface immediate launch failures instead of silently capturing nothing.
+        time.sleep(1.0)
+        if proc.poll() is not None:
+            out = proc.stdout.read() if proc.stdout else ""
+            print(f"[streamer] EXITED immediately (code {proc.returncode}):\n{out}")
     except Exception as e:
         print(f"[streamer] Could not auto-launch: {e}")
 
