@@ -8,21 +8,31 @@ self-updating knowledge base**.
 
 ## Status snapshot
 
+*Last updated: 2026-06-30*
+
 | Section | Component | Status |
 |---|---|---|
-| §0 | Project setup / KB rebuild | 🔲 |
-| §1 | `doc_loaders.py` + `kb_sync.py` + `meeting_notes.py` | ✅ done |
-| §2 | `facts.py` — SQLite fact store | ✅ done |
+| §0 | Project setup / KB rebuild | ✅ done |
+| §1 | `doc_loaders.py` + `kb_sync.py` + `meeting_notes.py` | ✅ done + integrated |
+| §2 | `facts.py` — SQLite fact store (provisional + pending queue) | ✅ done |
 | §3 | `fact_extractor.py` — seed timeline | ✅ done |
-| §4 | `phase2_validator.py` — freshness-aware | ✅ done (8/8 tests pass) |
-| §5 | `meeting_notes.py` — end-of-meeting brief | ✅ done (part of §1) |
-| §6 | Update paths — API endpoint + dashboard KB panel | ✅ done |
-| §7 | Product surfacing — OUTDATED/CONTRADICTED alerts | ✅ done |
-| §8 | Verification | ✅ `test_sync.py` (8 tests) + `test_pending.py` (9 tests) written |
+| §4 | `phase2_validator.py` — freshness-aware (Option B) | ✅ done |
+| §5 | `meeting_notes.py` — end-of-meeting brief | ✅ done |
+| §6 | Update paths — API + dashboard Pending tab | ✅ done |
+| §7 | Product surfacing — OUTDATED/CONTRADICTED/provisional alerts | ✅ done |
+| §8 | Verification — `test_sync.py` (8) + `test_pending.py` (9) | ✅ all passing |
+| §9 | Performance — Option A (chunk timing) + Option B (merged call + concurrent validation) | ✅ done (~3–5s latency) |
+| §10 | Audio capture — VB-Cable loopback + `--device mic` fallback + auto-launch | ✅ done |
+| §11 | One-command launch (`start.bat`) | ✅ done |
+| §12 | Docs — DESIGN, HOW_IT_WORKS, TECH STACK REVIEW, OVERVIEW | ✅ done |
+| §13 | GitHub push (latest changes) | 🔲 pending |
 
-*Legend: ✅ = unit-complete in isolation. Nothing is integration-verified yet —
-end-to-end is gated on §1 (the ingest layer everything routes through) plus §8.
-§6's re-ingestion path specifically depends on `kb_sync` (§1), not yet built.*
+**End-to-end status:** Fully operational. Server starts, audio captures, claims validate, alerts fire in ~3–5s.
+
+**Open items before hackathon demo:**
+1. Set `AUDIO_DEVICE=mic` in `.env` for mic-only testing (no call needed)
+2. Push latest changes to GitHub (`geppetto-3` branch)
+3. Optionally: clean up leftover debug files (`check_mic.py`, `check_mic1.py`, `test_mic.py`, `record_to_wav.py`, `make_claims_wav.py`)
 
 ---
 
