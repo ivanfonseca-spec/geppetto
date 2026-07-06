@@ -124,9 +124,13 @@ async def session_start():
     #   mic               — system default mic only (Jabra)
     audio_device = os.getenv("AUDIO_DEVICE", "mic")
     streamer_script = os.path.join(_HERE, "phase1_audio_streaming.py")
+    # The streamer needs pyaudio. The server interpreter (Python 3.14) has no
+    # pyaudio wheel, so launch the streamer with an interpreter that does
+    # (defaults to the py launcher's 3.12; override via STREAMER_PYTHON env var).
+    streamer_python = os.getenv("STREAMER_PYTHON", "py -3.12").split()
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-u", streamer_script,
+            [*streamer_python, "-u", streamer_script,
              "--server", "http://127.0.0.1:8000",
              "--session", s.id,
              "--device", audio_device],

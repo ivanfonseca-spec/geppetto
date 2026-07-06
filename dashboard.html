@@ -2,184 +2,580 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meeting Truth Layer -- Live</title>
+<title>Geppetto — Meeting Truth Layer</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;background:#f4f5f7;color:#222}
-  header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  header h1{font-size:17px;margin:0;flex:1}
-  .status{font-size:13px;opacity:.9}
-  button{font:inherit;border:0;border-radius:6px;padding:7px 13px;cursor:pointer}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;background:#0d0d0d;color:#e0e0e0;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff;border-bottom:1px solid #2a2a2a;flex-shrink:0;position:relative;z-index:100}
+  header.hidden{display:none}
+  .header-row{display:flex;align-items:center;gap:12px;padding:10px 20px}
+  header h1{font-size:16px;margin:0;flex:1}
+
+  /* ── drag-down curtain: profile + sources ── */
+  .curtain-handle{display:flex;justify-content:center;padding:2px 0 5px;cursor:ns-resize}
+  .curtain-grip{width:36px;height:4px;border-radius:2px;background:#ffffff40;transition:background .15s}
+  .curtain-handle:hover .curtain-grip,.curtain-handle.dragging .curtain-grip{background:#ffffff99}
+  .curtain-panel{position:absolute;top:100%;left:0;right:0;height:0;overflow:hidden;z-index:50;
+    display:flex;flex-direction:column;background:#181824a3;backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);border-bottom:1px solid #ffffff26;
+    box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .curtain-panel.snap{transition:height .25s ease}
+  .curtain-profile{flex:1;min-height:0;overflow:hidden}
+  .curtain-profile-inner{height:100%;box-sizing:border-box;display:flex;align-items:center;gap:16px;padding:22px 28px;border-bottom:1px solid #ffffff1f}
+  .profile-avatar{width:56px;height:56px;border-radius:50%;background:#ffffff1f;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0}
+  .profile-fields{display:flex;gap:12px;flex-wrap:wrap}
+  .profile-input{background:#ffffff14;border:1px solid #ffffff2e;color:#fff;padding:7px 12px;border-radius:8px;font-size:13px;min-width:160px}
+  .curtain-sources{flex:2;min-height:0;overflow-y:auto}
+  .curtain-sources-inner{box-sizing:border-box;padding:18px 28px 24px}
+  .curtain-sources h3{margin:0 0 14px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#ffffff8c}
+  .sources-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
+  .sources-col{border-right:1px solid #ffffff12;padding-right:20px}
+  .sources-col h4{margin:0 0 10px;font-size:13px;color:#fff;font-weight:600;display:flex;align-items:center;gap:6px}
+  .sources-col h4 img{display:block}
+  .source-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#ffffff0d;margin-bottom:6px;font-size:13px;color:#ffffffd9;opacity:.6}
+  .source-item img{display:block;flex-shrink:0}
+  .source-item .tag{margin-left:auto;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#ffffff66;border:1px solid #ffffff33;padding:1px 6px;border-radius:10px}
+  .source-upload{display:flex;align-items:center;gap:8px;padding:10px;border:1px dashed #ffffff40;border-radius:8px;cursor:pointer;font-size:13px;color:#fff;margin-bottom:8px;transition:background .15s,border-color .15s}
+  .source-upload:hover{background:#ffffff12;border-color:#ffffff70}
+  .local-file-list .source-item{opacity:1;background:#ffffff14}
+  .curtain-close-row{display:flex;justify-content:center;padding-top:18px}
+  .curtain-close-row button{background:#ffffff12;border:1px solid #ffffff2e;color:#ffffffd9;padding:6px 16px;border-radius:20px;font-size:12px;cursor:pointer;transition:background .15s}
+  .curtain-close-row button:hover{background:#ffffff22}
+  .status{font-size:12px;opacity:.9;background:#ffffff18;padding:3px 8px;border-radius:12px}
+  button{font:inherit;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
   .btn-start{background:#28a745;color:#fff}.btn-end{background:#dc3545;color:#fff}
-  .btn-sm{padding:4px 10px;font-size:12px;background:#6c757d;color:#fff;border-radius:4px}
+  .btn-secondary{background:#2a2a2a;color:#aaa;font-size:12px;padding:5px 10px}
+
+  /* ── main layout ── */
+  .app-body{position:relative;display:flex;flex:1;overflow:hidden}
+  .side{width:240px;background:#111;border-right:1px solid #222;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+  .side.hidden{display:none}
+  .side h2{font-size:11px;text-transform:uppercase;color:#555;margin:0}
+  #history{padding:10px;overflow-y:auto}
+  .mtg{padding:9px;border:1px solid #222;border-radius:6px;margin:5px 0;cursor:pointer;font-size:12px;background:#181818}
+  .mtg:hover{background:#222}.mtg .nm{font-weight:600;color:#ddd}.mtg .meta{color:#777;font-size:11px;margin-top:3px}
+  .mtg .del{float:right;color:#c00;cursor:pointer;font-size:11px}
+
+  /* ── live area: alerts + transcript side-by-side ── */
+  .live-area{position:relative;flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .live-panels{position:relative;flex:1;display:flex;overflow:hidden}
+
+  /* alerts column */
+  .alerts-col{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;background-color:#0d0d0d;background-image:radial-gradient(circle,#ffffff26 1px,transparent 1px);background-size:14px 14px}
+  .cmd{background:#1a1a1a;color:#bbb;padding:8px 10px;border-radius:6px;font-family:monospace;font-size:11px;margin-bottom:4px;white-space:pre-wrap;border:1px solid #2a2a2a}
+  #cmd{position:fixed;left:14px;bottom:92px;z-index:500;max-width:70%;box-shadow:0 6px 24px rgba(0,0,0,.6)}
+  .alert{background:#141414;border-radius:10px;padding:0;border:1px solid #2a2a2a;overflow:hidden;transition:all .2s}
+  .alert.hidden{display:none}
+  .alert-header{display:flex;flex-direction:column;gap:6px;padding:10px 14px;cursor:pointer}
+  .alert-top-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .alert-badge{display:flex;align-items:center;gap:4px;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:700;letter-spacing:.05em;flex-shrink:0}
+  .badge-icon{font-size:10px}
+  .alert-claim{font-size:13px;color:#ddd;line-height:1.4}
+  .metric-tag{font-size:10px;background:#2a2a2a;padding:1px 5px;border-radius:3px;color:#aaa;margin-right:4px}
+  .alert-chevron{color:#555;font-size:12px;transition:transform .2s;flex-shrink:0}
+  .alert.open .alert-chevron{transform:rotate(180deg)}
+  .alert-body{display:none;padding:0 14px 12px;font-size:12px;color:#999;border-top:1px solid #222;margin-top:0;padding-top:10px}
+  .alert.open .alert-body{display:block}
+  .alert-src{margin-bottom:6px}
+  .alert-sug{color:#bbb;font-style:italic}
+  .alert-conf{float:right;font-size:11px;color:#555;margin-top:-2px}
+  /* temporal enrichment (Geppetto 3) */
+  .temporal{font-size:12px;margin-top:6px;padding:6px 9px;border-radius:5px;background:#1a1a1a;color:#aaa}
+  .temporal.outdated{background:#241f10;color:#e6c34d}
+  .temporal.contradicted{background:#241313;color:#e88a8a}
+  .temporal.stale{background:#1b1b1b;color:#999}
+  .temporal.provisional{background:#101c22;color:#8db2bf}
+  .temporal a{color:inherit}
+  /* verified — green outline, white badge text */
+  .alert.VERIFIED{background:#132018;border-color:#2e7d32}
+  .alert.VERIFIED .alert-badge{background:rgba(46,125,50,.2);color:#ffffff;border:1px solid #2e7d32}
+  /* contradicted — red outline, white badge text */
+  .alert.CONTRADICTED{background:#241313;border-color:#c62828}
+  .alert.CONTRADICTED .alert-badge{background:rgba(198,40,40,.2);color:#ffffff;border:1px solid #c62828}
+  /* unverified — grey on grey */
+  .alert.UNVERIFIED{background:#1b1b1b;border-color:#5a5a5a}
+  .alert.UNVERIFIED .alert-badge{background:rgba(150,150,150,.16);color:#9a9a9a;border:1px solid #5a5a5a}
+  /* needs clarification — yellow on yellow */
+  .alert.NEEDS_CLARIFICATION{background:#211d10;border-color:#c9a227}
+  .alert.NEEDS_CLARIFICATION .alert-badge{background:rgba(201,162,39,.2);color:#e6c34d;border:1px solid #c9a227}
+  /* outdated — slate grey on slate grey (distinct from unverified) */
+  .alert.OUTDATED{background:#141c1f;border-color:#3d5a66}
+  .alert.OUTDATED .alert-badge{background:rgba(61,90,102,.22);color:#8db2bf;border:1px solid #3d5a66}
+  .empty{color:#444;text-align:center;margin-top:40px;font-size:13px}
+
+  /* transcript panel */
+  .transcript-panel{width:300px;background:#111;border-left:1px solid #222;display:flex;flex-direction:column;flex-shrink:0}
+  .transcript-panel.hidden{display:none}
+  .transcript-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #222;font-size:11px;text-transform:uppercase;color:#555;letter-spacing:.08em}
+  .transcript-body{flex:1;overflow-y:auto;padding:14px;font-size:13px;line-height:1.7;color:#bbb}
+  .transcript-body .t-new{color:#e0e0e0}
+
+  /* ── Knowledge Base panel (Geppetto 3) ── */
+  .kb-panel{width:320px;background:#111;border-left:1px solid #222;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+  .kb-panel.hidden{display:none}
+  .kb-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #222;gap:8px}
+  .kb-head h2{font-size:11px;text-transform:uppercase;color:#888;margin:0;letter-spacing:.08em}
+  .kb-inner{padding:10px 12px}
+  .btn-sm{padding:4px 9px;font-size:11px;background:#2a2a2a;color:#bbb;border-radius:4px}
+  .btn-sm:hover{background:#333;color:#fff}
   .btn-confirm{background:#28a745;color:#fff;padding:3px 8px;font-size:11px;border-radius:3px}
-  .btn-reject{background:#dc3545;color:#fff;padding:3px 8px;font-size:11px;border-radius:3px}
-  .sync-bar{font-size:11px;color:#ddd;opacity:.85;margin-left:auto}
-  .wrap{display:flex;height:calc(100vh - 52px);overflow:hidden}
-  .side{width:250px;min-width:200px;background:#fff;border-right:1px solid #e3e6ea;overflow-y:auto;padding:10px;flex-shrink:0}
-  .side h2{font-size:12px;text-transform:uppercase;color:#888;margin:6px 4px 8px}
-  .mtg{padding:9px;border:1px solid #eee;border-radius:6px;margin:5px 0;cursor:pointer;font-size:12px;transition:background .15s}
-  .mtg:hover{background:#f0f1f4}.mtg .nm{font-weight:600;font-size:12px}.mtg .meta{color:#777;font-size:11px;margin-top:3px;display:flex;gap:6px;align-items:center}
-  .mtg .del{float:right;color:#bbb;cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;border-radius:3px}
-  .mtg .del:hover{color:#c00;background:#fee}
-  .mtg.empty-session{opacity:.5}
-  .pill{display:inline-block;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:600}
-  .pill-red{background:#fde;color:#c00}.pill-green{background:#dfd;color:#080}.pill-yellow{background:#ffd;color:#860}
-  .main{flex:1;overflow-y:auto;padding:14px 18px;min-width:0}
-  .count{font-size:13px;color:#555;margin-bottom:8px}
-  .cmd{background:#1e1e1e;color:#ddd;padding:7px 10px;border-radius:6px;font-family:monospace;font-size:11px;margin:6px 0;white-space:pre-wrap}
-  .alert{background:#fff;border-radius:8px;padding:11px 13px;margin:7px 0;border-left:5px solid #ccc;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-  .alert .cat{font-weight:700;font-size:11px;letter-spacing:.04em}
-  .alert .claim{font-size:14px;margin:3px 0}
-  .alert .src{font-size:11px;color:#666}
-  .alert .sug{font-size:12px;color:#333;margin-top:5px}
-  .alert .conf{float:right;font-size:11px;color:#888}
-  .temporal{font-size:12px;margin-top:5px;padding:5px 8px;border-radius:4px;background:#f8f9fa}
-  .temporal.outdated{background:#fff3cd;color:#856404}
-  .temporal.contradicted{background:#f8d7da;color:#721c24}
-  .temporal.stale{background:#e2e3e5;color:#6c757d;margin-top:3px}
-  .temporal.provisional{background:#e8f4fd;color:#0c5460;margin-top:3px}
-  .VERIFIED{border-left-color:#28a745}.CONTRADICTED{border-left-color:#dc3545}
-  .UNVERIFIED{border-left-color:#ffc107}.OUTDATED{border-left-color:#e6a817}
-  .NEEDS_CLARIFICATION{border-left-color:#17a2b8}
-  .cat.VERIFIED{color:#28a745}.cat.CONTRADICTED{color:#dc3545}.cat.UNVERIFIED{color:#b8860b}
-  .cat.OUTDATED{color:#b37400}.cat.NEEDS_CLARIFICATION{color:#17a2b8}
-  .toast{position:fixed;bottom:16px;right:16px;background:#333;color:#fff;padding:10px 14px;border-radius:6px;font-size:13px;z-index:999}
-  .empty{color:#999;text-align:center;margin-top:40px;font-size:13px}
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:100}
-  .modal .box{background:#fff;width:80%;max-width:800px;max-height:85vh;overflow:auto;border-radius:8px;padding:20px}
-  /* KB panel */
-  .kb-panel{width:320px;min-width:260px;background:#fff;border-left:1px solid #e3e6ea;overflow-y:auto;padding:10px;flex-shrink:0}
-  .kb-panel h2{font-size:12px;text-transform:uppercase;color:#888;margin:6px 4px 8px;display:flex;align-items:center;gap:6px}
-  .kb-tabs{display:flex;gap:4px;margin-bottom:8px}
-  .kb-tab{flex:1;padding:5px;border:1px solid #ddd;border-radius:4px;font-size:12px;cursor:pointer;text-align:center;background:#f8f9fa;color:#555}
-  .kb-tab.active{background:#667eea;color:#fff;border-color:#667eea}
-  .badge{display:inline-block;background:#dc3545;color:#fff;border-radius:10px;font-size:10px;padding:1px 5px;margin-left:4px}
-  .metric-row{padding:7px 8px;border:1px solid #eee;border-radius:5px;margin:4px 0;font-size:12px}
+  .btn-reject{background:#c62828;color:#fff;padding:3px 8px;font-size:11px;border-radius:3px}
+  .sync-status{font-size:10px;color:#666;padding:0 14px 8px}
+  .kb-tabs{display:flex;gap:4px;margin-bottom:10px}
+  .kb-tab{flex:1;padding:5px;border:1px solid #2a2a2a;border-radius:4px;font-size:12px;cursor:pointer;text-align:center;background:#181818;color:#999}
+  .kb-tab.active{background:#3a3a6a;color:#fff;border-color:#4a4a8a}
+  .kb-badge{display:inline-block;background:#c62828;color:#fff;border-radius:10px;font-size:10px;padding:1px 5px;margin-left:4px}
+  .metric-row{padding:7px 8px;border:1px solid #222;border-radius:5px;margin:4px 0;font-size:12px;background:#161616}
   .metric-row .mk{color:#888;font-size:10px;margin-bottom:1px}
-  .metric-row .val{font-weight:700;font-size:14px}
-  .metric-row .asof{color:#888;font-size:11px}
-  .metric-row.stale{border-left:3px solid #ffc107;background:#fffef0}
-  .metric-row.provisional{border-left:3px solid #17a2b8;background:#e8f4fd}
-  .pending-row{padding:8px;border:1px solid #bee5eb;border-radius:5px;margin:4px 0;font-size:12px;background:#e8f4fd}
-  .pending-row.prov{border-color:#c3e6cb;background:#d4edda}
-  .pending-row .pk{color:#555;font-size:10px}
-  .pending-row .pval{font-weight:700}
+  .metric-row .val{font-weight:700;font-size:14px;color:#e0e0e0}
+  .metric-row .asof{color:#777;font-size:11px}
+  .metric-row.stale{border-left:3px solid #c9a227;background:#1c1a10}
+  .metric-row.provisional{border-left:3px solid #3d7f96;background:#101c22}
+  .pending-row{padding:8px;border:1px solid #24414a;border-radius:5px;margin:4px 0;font-size:12px;background:#101c22}
+  .pending-row.prov{border-color:#2e5a34;background:#101f14}
+  .pending-row .pk{color:#999;font-size:10px}
+  .pending-row .pval{font-weight:700;color:#e0e0e0}
   .pending-row .pactions{display:flex;gap:4px;margin-top:5px}
-  .update-form{background:#f8f9fa;border-radius:6px;padding:10px;margin-top:10px}
-  .update-form h3{font-size:12px;text-transform:uppercase;color:#555;margin:0 0 8px}
-  .update-form select,.update-form input{width:100%;padding:5px 7px;border:1px solid #ccc;border-radius:4px;font:inherit;font-size:12px;margin-bottom:6px}
-  .update-form button{width:100%;background:#667eea;color:#fff;padding:6px}
-  .hist-rows{font-size:11px;color:#666;margin-top:4px}
-  .hist-row{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #f0f0f0}
+  .update-form{background:#161616;border:1px solid #222;border-radius:6px;padding:10px;margin-top:10px}
+  .update-form h3{font-size:12px;text-transform:uppercase;color:#888;margin:0 0 8px}
+  .update-form select,.update-form input{width:100%;padding:5px 7px;border:1px solid #2a2a2a;background:#0d0d0d;color:#ddd;border-radius:4px;font:inherit;font-size:12px;margin-bottom:6px}
+  .update-form button{width:100%;background:#3a3a6a;color:#fff;padding:6px}
+  .hist-rows{font-size:11px;color:#888;margin-top:4px}
+  .hist-row{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #1e1e1e}
+
+  /* waveform + record bar */
+  .bottom-bar{flex-shrink:0;height:80px;background:#0a0a0a;border-top:1px solid #1e1e1e;display:flex;align-items:center;justify-content:center;position:relative}
+  #waveCanvas{position:absolute;inset:0;width:100%;height:100%;opacity:.6}
+  .record-btn{position:relative;z-index:2;width:44px;height:44px;border-radius:50%;border:3px solid #ff4444;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s}
+  .record-btn.active{background:#ff4444}
+  .record-btn .dot{width:16px;height:16px;border-radius:50%;background:#ff4444;transition:all .2s}
+  .record-btn.active .dot{width:12px;height:12px;border-radius:3px;background:#fff}
+
+  /* filters + stats */
+  .filters-bar{display:flex;padding:4px 14px;border-bottom:1px solid #1e1e1e;flex-shrink:0;align-items:center}
+  .filters-spacer{flex:1}
+  .filters-group{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+  .filter-btn{background:#1a1a1a;border:1px solid #2a2a2a;color:#888;padding:2px 8px;border-radius:20px;cursor:pointer;font-size:10px;transition:all .2s}
+  .filter-btn.active{outline:2px solid rgba(255,255,255,.55);outline-offset:1px}
+  .filter-btn[data-filter="VERIFIED"]{background:rgba(46,125,50,.18);color:#ffffff;border-color:#2e7d32}
+  .filter-btn[data-filter="CONTRADICTED"]{background:rgba(198,40,40,.18);color:#ffffff;border-color:#c62828}
+  .filter-btn[data-filter="UNVERIFIED"]{background:rgba(150,150,150,.14);color:#9a9a9a;border-color:#5a5a5a}
+  .filter-btn[data-filter="NEEDS_CLARIFICATION"]{background:rgba(201,162,39,.18);color:#e6c34d;border-color:#c9a227}
+  .filter-btn[data-filter="OUTDATED"]{background:rgba(61,90,102,.2);color:#8db2bf;border-color:#3d5a66}
+  .stats-inline{flex:1;text-align:right;font-size:10px;color:#555}
+
+  /* misc */
+  .toast{position:fixed;bottom:16px;right:16px;background:#1e1e1e;color:#ddd;padding:10px 14px;border-radius:6px;font-size:12px;opacity:.95;border:1px solid #333;z-index:999}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal .box{background:#111;border:1px solid #333;width:80%;max-width:800px;max-height:80vh;overflow:auto;border-radius:8px;padding:20px;color:#ddd}
+  .side-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #222;gap:8px;flex-shrink:0}
+  .sidebar-toggle{background:none;border:0;color:#777;padding:4px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .15s,background .15s}
+  .sidebar-toggle svg{width:15px;height:15px}
+  .sidebar-toggle:hover{color:#ddd;background:#222}
+  .sidebar-toggle-collapsed{position:absolute;top:14px;left:10px;z-index:20;background:#161616;border:1px solid #2a2a2a}
+  .sidebar-toggle-collapsed.hidden{display:none}
+  .sidebar-toggle-right{left:auto;right:10px}
+  .resize-handle{width:5px;flex-shrink:0;cursor:col-resize;background:transparent;transition:background .15s}
+  .resize-handle:hover,.resize-handle.dragging{background:#4a4a8a}
+  .filter-btn{cursor:grab}
+  .filter-btn.dragging-tab{opacity:.4}
+  .alert.drop-target{outline:2px dashed #fff;outline-offset:2px}
 </style>
 </head>
 <body>
 <header>
-  <h1>&#128225; Meeting Truth Layer &#8212; Live</h1>
-  <span class="status" id="status">idle</span>
-  <span class="count" id="count"></span>
-  <button class="btn-start" id="startBtn">Start live meeting</button>
-  <button class="btn-end" id="endBtn" style="display:none">End meeting</button>
-  <span class="sync-bar" id="syncBar"></span>
+  <div class="header-row">
+    <h1>📡 Geppetto — Meeting Truth Layer</h1>
+    <span class="status" id="status">idle</span>
+    <span id="count" style="font-size:12px;color:#888"></span>
+    <button class="btn-secondary" id="toggleKbBtn" title="Toggle Knowledge Base">Knowledge Base</button>
+    <button class="btn-start" id="startBtn">Start live meeting</button>
+    <button class="btn-end" id="endBtn" style="display:none">End meeting</button>
+  </div>
+
+  <div class="curtain-handle" id="curtainHandle" title="Drag down for profile & sources">
+    <div class="curtain-grip"></div>
+  </div>
+
+  <div class="curtain-panel" id="curtainPanel">
+    <div class="curtain-profile">
+      <div class="curtain-profile-inner">
+        <div class="profile-avatar">👤</div>
+        <div class="profile-fields">
+          <input class="profile-input" id="profileUsername" placeholder="Username" value="Jane Doe">
+          <input class="profile-input" id="profileTitle" placeholder="User title" value="Product Manager">
+          <input class="profile-input" id="profileRole" placeholder="User role" value="Meeting Owner">
+        </div>
+      </div>
+    </div>
+    <div class="curtain-sources">
+      <div class="curtain-sources-inner">
+        <h3>Sources</h3>
+        <div class="sources-grid">
+          <div id="sourcesGenerated" style="display:contents"></div>
+          <div class="sources-col">
+            <h4>Home</h4>
+            <label class="source-upload" for="localFileInput">
+              <span>💻</span>Upload from computer
+            </label>
+            <input type="file" id="localFileInput" multiple style="display:none">
+            <div id="localFileList" class="local-file-list"></div>
+          </div>
+        </div>
+        <div class="curtain-close-row">
+          <button id="curtainCloseBtn" title="Close">▲ Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </header>
-<div class="wrap">
-  <aside class="side">
-    <h2>Meeting history</h2>
+
+<!-- filter bar -->
+<div class="filters-bar">
+  <div class="filters-spacer"></div>
+  <div class="filters-group">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="VERIFIED">✓ Verified</button>
+    <button class="filter-btn" data-filter="CONTRADICTED">✗ Contradicted</button>
+    <button class="filter-btn" data-filter="UNVERIFIED">? Unverified</button>
+    <button class="filter-btn" data-filter="NEEDS_CLARIFICATION">! Clarification</button>
+    <button class="filter-btn" data-filter="OUTDATED">⏰ Outdated</button>
+  </div>
+  <span class="stats-inline" id="statsInline"></span>
+</div>
+
+<div class="app-body">
+  <!-- history sidebar -->
+  <aside class="side" id="sidePanel">
+    <div class="side-head">
+      <h2>Meeting history</h2>
+      <button class="sidebar-toggle" id="togglePanelsBtn" title="Hide history">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M6 2.75v10.5" stroke="currentColor" stroke-width="1.3"/>
+        </svg>
+      </button>
+    </div>
     <div id="history"></div>
   </aside>
-  <main class="main">
-    <div id="cmd"></div>
-    <div id="alerts"><div class="empty">No live session. Click "Start live meeting".</div></div>
-  </main>
-  <aside class="kb-panel">
-    <h2>
-      Knowledge Base
-      <button class="btn-sm" onclick="refreshKB()" title="Sync docs now">&#8635; Sync</button>
-    </h2>
-    <div class="kb-tabs">
-      <div class="kb-tab active" id="tab-metrics" onclick="showTab('metrics')">Metrics</div>
-      <div class="kb-tab" id="tab-pending" onclick="showTab('pending')">
-        Pending <span class="badge" id="pendingBadge" style="display:none">0</span>
+  <div class="resize-handle" id="historyResizeHandle" title="Drag to resize"></div>
+  <button class="sidebar-toggle sidebar-toggle-collapsed hidden" id="toggleFullscreenBtn" title="Show history">
+    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M6 2.75v10.5" stroke="currentColor" stroke-width="1.3"/>
+    </svg>
+  </button>
+
+  <!-- live area -->
+  <div class="live-area">
+    <div class="live-panels">
+      <!-- alerts column -->
+      <div class="alerts-col" id="alerts">
+        <div class="empty">No live session. Click "Start live meeting".</div>
       </div>
-      <div class="kb-tab" id="tab-update" onclick="showTab('update')">Update</div>
+
+      <div class="resize-handle" id="transcriptResizeHandle" title="Drag to resize"></div>
+
+      <!-- live transcript -->
+      <div class="transcript-panel" id="transcriptPanel">
+        <div class="transcript-header">
+          <span>Full transcript</span>
+          <button class="sidebar-toggle" id="hideTranscriptBtn" title="Hide transcript">
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M10 2.75v10.5" stroke="currentColor" stroke-width="1.3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="transcript-body" id="transcriptBody">
+          <span style="color:#444">Transcript will appear here when the meeting starts...</span>
+        </div>
+      </div>
     </div>
-    <!-- Metrics tab -->
-    <div id="panel-metrics">
-      <div id="metrics-list"></div>
-      <div id="metric-history" style="margin-top:10px"></div>
+    <button class="sidebar-toggle sidebar-toggle-collapsed sidebar-toggle-right hidden" id="showTranscriptBtn" title="Show transcript">
+      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M10 2.75v10.5" stroke="currentColor" stroke-width="1.3"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Knowledge Base panel (Geppetto 3) -->
+  <div class="resize-handle" id="kbResizeHandle" title="Drag to resize"></div>
+  <aside class="kb-panel" id="kbPanel">
+    <div class="kb-head">
+      <h2>Knowledge Base</h2>
+      <button class="btn-sm" id="syncBtn" title="Sync docs now">↻ Sync</button>
     </div>
-    <!-- Pending tab -->
-    <div id="panel-pending" style="display:none">
-      <div id="pending-list"><div class="empty" style="margin-top:16px">No pending items.</div></div>
-    </div>
-    <!-- Update tab -->
-    <div id="panel-update" style="display:none">
-      <div class="update-form">
-        <h3>Update a metric</h3>
-        <select id="upd-key"><option value="">-- select metric --</option></select>
-        <input id="upd-val" type="text" placeholder="New value">
-        <input id="upd-date" type="date" placeholder="As of date">
-        <input id="upd-source" type="text" placeholder="Source (optional)" value="dashboard_update">
-        <button onclick="submitUpdate()">Update</button>
+    <div class="sync-status" id="syncStatus"></div>
+    <div class="kb-inner">
+      <div class="kb-tabs">
+        <div class="kb-tab active" id="tab-metrics">Metrics</div>
+        <div class="kb-tab" id="tab-pending">Pending <span class="kb-badge" id="pendingBadge" style="display:none">0</span></div>
+        <div class="kb-tab" id="tab-update">Update</div>
+      </div>
+      <!-- Metrics tab -->
+      <div id="panel-metrics">
+        <div id="metrics-list"></div>
+        <div id="metric-history" style="margin-top:10px"></div>
+      </div>
+      <!-- Pending tab -->
+      <div id="panel-pending" style="display:none">
+        <div id="pending-list"><div class="empty" style="margin-top:16px">No pending items.</div></div>
+      </div>
+      <!-- Update tab -->
+      <div id="panel-update" style="display:none">
+        <div class="update-form">
+          <h3>Update a metric</h3>
+          <select id="upd-key"><option value="">-- select metric --</option></select>
+          <input id="upd-val" type="text" placeholder="New value">
+          <input id="upd-date" type="date" placeholder="As of date">
+          <input id="upd-source" type="text" placeholder="Source (optional)" value="dashboard_update">
+          <button id="upd-submit">Update</button>
+        </div>
       </div>
     </div>
   </aside>
 </div>
+
+<!-- waveform + record button -->
+<div class="bottom-bar" id="bottomBar">
+  <canvas id="waveCanvas"></canvas>
+  <div class="record-btn" id="recordBtn" title="Start / End meeting">
+    <div class="dot"></div>
+  </div>
+</div>
+
+<div id="cmd" style="display:none"></div>
+
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
 
 <script>
 let sid=null, ws=null, reconnectTimer=null;
+let allAlerts=[], activeFilter='all', isLive=false;
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
 
-function wsUrl(id){const p=location.protocol==='https:'?'wss':'ws';return p+'://'+location.host+'/ws/session/'+id;}
-
+/* ── WebSocket ── */
+function wsUrl(id){const p=location.protocol==='https:'?'wss':'ws';return `${p}://${location.host}/ws/session/${id}`;}
 function connectWS(id){
-  sid=id;
-  ws=new WebSocket(wsUrl(id));
+  sid=id; ws=new WebSocket(wsUrl(id));
   ws.onmessage=e=>handle(JSON.parse(e.data));
   ws.onclose=()=>{ if(sid){ clearTimeout(reconnectTimer); reconnectTimer=setTimeout(()=>connectWS(sid),1500);} };
 }
-
+let currentAudioLevel=0;
 function handle(msg){
   if(msg.type==='alert') addAlert(msg.data);
-  else if(msg.type==='status'){ $('status').textContent=msg.data.status; $('count').textContent=msg.data.claim_count+' claims'; }
+  else if(msg.type==='transcript') updateTranscript(msg.data.text);
+  else if(msg.type==='audio_level'){ currentAudioLevel=msg.data.level; }
+  else if(msg.type==='status'){
+    $('status').textContent=msg.data.status;
+    $('count').textContent=msg.data.claim_count? msg.data.claim_count+' claims' :'';
+    if(msg.data.status==='processing') animateWave();
+  }
   else if(msg.type==='warning') toast(msg.data.message);
   else if(msg.type==='ended'){ toast('Saved: '+msg.data.folder_name); endedUI(); loadHistory(); loadMetrics(); loadPending(); }
 }
 
-function addAlert(a){
-  const box=$('alerts');
-  if(box.querySelector('.empty')) box.innerHTML='';
-  const ev=(a.evidence&&a.evidence[0])||{};
-
-  let temporalHtml='';
-  if(a.category==='OUTDATED' && a.current_value){
-    temporalHtml+='<div class="temporal outdated">&#9200; Current: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+' &nbsp;&middot;&nbsp; Stated: '+esc(a.stated_value||a.current_value)+' as of '+esc(a.stated_as_of||'?')+'</div>';
-  } else if(a.category==='CONTRADICTED' && a.current_value){
-    temporalHtml+='<div class="temporal contradicted">&#128203; On record: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+'</div>';
-  }
-  if(a.is_stale){
-    temporalHtml+='<div class="temporal stale">&#9888; Metric may be stale &mdash; last updated '+esc(a.current_as_of||'?')+'</div>';
-  }
-  if(a.is_provisional){
-    temporalHtml+='<div class="temporal provisional">&#8987; Unconfirmed &mdash; auto-extracted, awaiting PM review. <a href="#" onclick="showTab(\'pending\');return false">Review in Pending tab</a></div>';
-  }
-  const metricBadge=a.fact_metric?'<span style="font-size:10px;background:#e9ecef;padding:1px 5px;border-radius:3px;color:#555">'+esc(a.fact_metric)+'</span> ':'';
-
-  const div=document.createElement('div');
-  div.className='alert '+a.category;
-  div.innerHTML='<span class="conf">'+(a.confidence||'')+' confidence</span>'
-    +'<div class="cat '+a.category+'">'+metricBadge+a.category.replace(/_/g,' ')+'</div>'
-    +'<div class="claim">&ldquo;'+esc(a.claim_text)+'&rdquo;</div>'
-    +(ev.source?'<div class="src">&#128196; '+esc(ev.source)+(ev.snippet?' &mdash; '+esc(ev.snippet.slice(0,80)):'')+'</div>':'')
-    +temporalHtml
-    +(a.suggested_response?'<div class="sug">&#128172; '+esc(a.suggested_response)+'</div>':'');
-  box.prepend(div);
+/* ── transcript ── */
+function updateTranscript(text){
+  const el=$('transcriptBody');
+  el.innerHTML='<span class="t-new">'+esc(text)+'</span>';
+  el.scrollTop=el.scrollHeight;
 }
 
-// ── Tab switching ────────────────────────────────────────────────────────────
+/* ── alerts ── */
+const BADGE={
+  VERIFIED:    {icon:'✓', label:'Verified'},
+  CONTRADICTED:{icon:'✗', label:'Contradicted'},
+  UNVERIFIED:  {icon:'?', label:'Unverified'},
+  OUTDATED:    {icon:'⏰',label:'Outdated'},
+  NEEDS_CLARIFICATION:{icon:'!',label:'Needs clarification'},
+};
+function addAlert(a){
+  allAlerts.unshift(a);
+  renderAlerts();
+  updateStats();
+}
+function buildAlertCard(a, cid){
+  cid = cid || a.claim_text.slice(0,60);
+  const b=BADGE[a.category]||{icon:'•',label:a.category};
+  const ev=(a.evidence&&a.evidence[0])||{};
+  // confidence: supports string (live backend) or numeric score (samples)
+  const confTxt = a.confidence ? esc(a.confidence)+' confidence'
+                : (a.confidence_score ? Math.round(a.confidence_score*100)+'% conf' : '');
+  // temporal enrichment (Geppetto 3)
+  let temporalHtml='';
+  if(a.category==='OUTDATED' && a.current_value){
+    temporalHtml+='<div class="temporal outdated">⏰ Current: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+' · Stated: '+esc(a.stated_value||a.current_value)+' as of '+esc(a.stated_as_of||'?')+'</div>';
+  } else if(a.category==='CONTRADICTED' && a.current_value){
+    temporalHtml+='<div class="temporal contradicted">📋 On record: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+'</div>';
+  }
+  if(a.is_stale){ temporalHtml+='<div class="temporal stale">⚠ Metric may be stale — last updated '+esc(a.current_as_of||'?')+'</div>'; }
+  if(a.is_provisional){ temporalHtml+='<div class="temporal provisional">⏳ Unconfirmed — auto-extracted, awaiting review. <a href="#" onclick="showTab(\'pending\');return false">Review in Pending</a></div>'; }
+  const metricBadge=a.fact_metric?'<span class="metric-tag">'+esc(a.fact_metric)+'</span>':'';
+  const div=document.createElement('div');
+  div.className='alert '+a.category;
+  div.dataset.cid=cid;
+  div.title='Drop a filter tab here to reclassify this claim';
+  div.innerHTML=`<div class="alert-header">
+    <div class="alert-top-row">
+      <span class="alert-badge"><span class="badge-icon">${b.icon}</span>${b.label.toUpperCase()}</span>
+      <span class="alert-chevron">▾</span>
+    </div>
+    <span class="alert-claim">${metricBadge}${esc(a.claim_text)}</span>
+  </div>
+  <div class="alert-body">
+    <span class="alert-conf">${confTxt}</span>
+    ${ev.source?`<div class="alert-src">📚 ${esc(ev.source)}${ev.snippet?' — '+esc(ev.snippet.slice(0,120)):''}</div>`:''}
+    ${temporalHtml}
+    ${a.suggested_response?`<div class="alert-sug">💬 ${esc(a.suggested_response)}</div>`:''}
+  </div>`;
+  div.querySelector('.alert-header').onclick=()=>div.classList.toggle('open');
+  div.addEventListener('dragover',e=>{ e.preventDefault(); div.classList.add('drop-target'); });
+  div.addEventListener('dragleave',()=>div.classList.remove('drop-target'));
+  div.addEventListener('drop',e=>{
+    e.preventDefault();
+    div.classList.remove('drop-target');
+    const cat=e.dataTransfer.getData('text/plain');
+    if(cat) retagCard(cid, cat);
+  });
+  return div;
+}
+function retagCard(cid, newCategory){
+  let a=allAlerts.find(x=>x.claim_text.slice(0,60)===cid);
+  if(a){
+    a.category=newCategory;
+    const old=$('alerts').querySelector(`[data-cid="${CSS.escape(cid)}"]`);
+    if(old) old.remove();
+    renderAlerts();
+    updateStats();
+    return;
+  }
+  a=SAMPLE_ALERTS.find(x=>x.claim_text.slice(0,60)===cid);
+  if(a){ a.category=newCategory; renderSampleAlerts(); }
+}
+function renderAlerts(){
+  const box=$('alerts');
+  const filtered=allAlerts.filter(a=>activeFilter==='all'||a.category===activeFilter);
+  if(filtered.length===0){ box.innerHTML='<div class="empty">No alerts match the current filter.</div>'; return; }
+  if(box.querySelector('.empty')) box.innerHTML='';
+  const existing=new Set([...box.querySelectorAll('.alert')].map(e=>e.dataset.cid));
+  filtered.forEach((a,i)=>{
+    const cid=a.claim_text.slice(0,60);
+    if(existing.has(cid)) return;
+    box.insertBefore(buildAlertCard(a,cid), box.firstChild);
+  });
+  [...box.querySelectorAll('.alert')].forEach(el=>{
+    const a=allAlerts.find(x=>x.claim_text.slice(0,60)===el.dataset.cid);
+    el.classList.toggle('hidden', !a||(activeFilter!=='all'&&a.category!==activeFilter));
+  });
+}
+
+/* ── sample cards: preview of each verdict type, shown only when idle ── */
+const SAMPLE_ALERTS=[
+  {claim_text:"Backend API is fully tested and stable", category:"VERIFIED", confidence_score:0.95,
+   evidence:[{source:"Deploy log", snippet:"All endpoints passing as of this morning"}], suggested_response:""},
+  {claim_text:"QA is 100% done", category:"CONTRADICTED", confidence_score:0.92,
+   evidence:[{source:"QA tracker", snippet:"82% complete as of last update"}],
+   suggested_response:"Ask for the current QA percentage before moving forward."},
+  {claim_text:"We might be able to launch next quarter", category:"UNVERIFIED", confidence_score:0.4,
+   evidence:[], suggested_response:""},
+  {claim_text:"The design work is almost finished", category:"NEEDS_CLARIFICATION", confidence_score:0.5,
+   evidence:[], suggested_response:"Ask what percentage of the design is actually complete."},
+  {claim_text:"John is the tech lead for this project", category:"OUTDATED", confidence_score:0.7,
+   evidence:[{source:"Org chart", snippet:"Last updated 2 months ago — role has since changed"}], suggested_response:""},
+];
+function renderSampleAlerts(){
+  const box=$('alerts');
+  box.innerHTML='<div class="empty">No live session. Click "Start live meeting".<br>Preview of how alerts will look once claims are detected:</div>';
+  SAMPLE_ALERTS.forEach(a=>box.appendChild(buildAlertCard(a)));
+}
+function updateStats(){
+  const c={VERIFIED:0,CONTRADICTED:0,UNVERIFIED:0,OUTDATED:0,NEEDS_CLARIFICATION:0};
+  allAlerts.forEach(a=>{c[a.category]=(c[a.category]||0)+1});
+  $('statsInline').textContent=allAlerts.length?
+    `${allAlerts.length} claims · ✓${c.VERIFIED} ✗${c.CONTRADICTED} ?${c.UNVERIFIED}`:'';
+}
+
+/* ── minimalist white waveform (responds to audio) ── */
+let waveAnim=null, isWaveActive=false;
+function animateWave(){
+  isWaveActive=true;
+  const canvas=$('waveCanvas');
+  const ctx=canvas.getContext('2d');
+  let frame=0;
+  const points=300;
+  const yValues=new Array(points).fill(0.5);
+  function draw(){
+    canvas.width=canvas.offsetWidth; canvas.height=canvas.offsetHeight;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const w=canvas.width, h=canvas.height, centerY=h/2;
+    if(currentAudioLevel<0.1){
+      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(0,centerY); ctx.lineTo(w,centerY); ctx.stroke();
+      frame++; if(isWaveActive) waveAnim=requestAnimationFrame(draw); return;
+    }
+    for(let i=0;i<points-1;i++) yValues[i]=yValues[i+1];
+    const audioInfluence=Math.min(1,currentAudioLevel/100);
+    yValues[points-1]=0.5+(Math.sin(frame*0.04)*audioInfluence*0.8+Math.random()*audioInfluence*0.3);
+    ctx.strokeStyle='rgba(255,255,255,0.9)'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    for(let i=0;i<points;i++){
+      const x=(i/points)*w; const smoothY=yValues[i];
+      const intensity=Math.min(1,currentAudioLevel/100);
+      const y=centerY-(smoothY-0.5)*centerY*0.8*intensity;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    frame++; if(isWaveActive) waveAnim=requestAnimationFrame(draw);
+  }
+  if(waveAnim) cancelAnimationFrame(waveAnim);
+  draw();
+}
+function stopWave(){
+  isWaveActive=false;
+  if(waveAnim) cancelAnimationFrame(waveAnim);
+  const canvas=$('waveCanvas');
+  canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+}
+
+/* ── session control ── */
+async function start(){
+  const r=await fetch('/api/session/start',{method:'POST'});
+  const j=await r.json(); sid=j.session_id;
+  history.replaceState(null,'','/?session='+sid);
+  const cmd='py -3.12 phase1_audio_streaming.py --server '+location.origin+' --session '+sid+' --device mic';
+  $('cmd').innerHTML='<div class="cmd">'+esc(cmd)+'</div>';
+  $('cmd').style.display='block';
+  $('alerts').innerHTML='<div class="empty">Listening… alerts will appear here.</div>';
+  allAlerts=[];
+  $('transcriptBody').innerHTML='<span style="color:#555">Waiting for audio...</span>';
+  startedUI(); connectWS(sid);
+}
+async function stop(){
+  if(!sid)return;
+  try { await fetch('/api/session/'+sid+'/end',{method:'POST'}); endedUI(); }
+  catch(e){ console.error('Error ending session:', e); endedUI(); }
+}
+function startedUI(){
+  isLive=true;
+  $('startBtn').style.display='none'; $('endBtn').style.display='inline-block';
+  $('status').textContent='listening';
+  $('recordBtn').classList.add('active');
+  animateWave();
+}
+function endedUI(){
+  isLive=false; sid=null;
+  if(ws){ws.close();ws=null;}
+  stopWave();
+  $('endBtn').style.display='none'; $('startBtn').style.display='inline-block';
+  $('status').textContent='idle'; $('cmd').style.display='none';
+  allAlerts=[]; $('recordBtn').classList.remove('active');
+  renderSampleAlerts();
+}
+
+/* ── Knowledge Base: tabs ── */
 function showTab(name){
   ['metrics','pending','update'].forEach(t=>{
     $('panel-'+t).style.display = t===name ? '' : 'none';
@@ -188,140 +584,129 @@ function showTab(name){
   if(name==='pending') loadPending();
 }
 
-// ── KB: metrics ──────────────────────────────────────────────────────────────
+/* ── KB: metrics ── */
 async function loadMetrics(){
-  const r=await fetch('/api/metrics'); const list=await r.json();
-  const sel=$('upd-key');
-  const prev=sel.value;
-  sel.innerHTML='<option value="">-- select metric --</option>';
-  list.forEach(m=>{
-    const o=document.createElement('option');
-    o.value=m.metric_key; o.textContent=m.metric_key;
-    if(m.metric_key===prev) o.selected=true;
-    sel.appendChild(o);
-  });
-  const ml=$('metrics-list'); ml.innerHTML='';
-  list.forEach(m=>{
-    const staleClass=m.is_stale?' stale':'';
-    const provClass=m.provisional?' provisional':'';
-    const staleIcon=m.is_stale?' &#9888;':'';
-    const provIcon=m.provisional?' &#8987;':'';
-    const d=document.createElement('div');
-    d.className='metric-row'+staleClass+provClass;
-    d.style.cursor='pointer';
-    d.innerHTML='<div class="mk">'+esc(m.metric_key)+staleIcon+provIcon+'</div>'
-      +'<div class="val">'+esc(m.value_display)+'</div>'
-      +'<div class="asof">as of '+esc(m.as_of)+' &middot; '+esc(m.source)+'</div>';
-    d.onclick=()=>showHistory(m.metric_key);
-    ml.appendChild(d);
-  });
+  try{
+    const r=await fetch('/api/metrics'); const list=await r.json();
+    const sel=$('upd-key'); const prev=sel.value;
+    sel.innerHTML='<option value="">-- select metric --</option>';
+    list.forEach(m=>{
+      const o=document.createElement('option');
+      o.value=m.metric_key; o.textContent=m.metric_key;
+      if(m.metric_key===prev) o.selected=true;
+      sel.appendChild(o);
+    });
+    const ml=$('metrics-list'); ml.innerHTML='';
+    if(!list.length){ ml.innerHTML='<div class="empty" style="margin-top:16px">No metrics yet.</div>'; return; }
+    list.forEach(m=>{
+      const staleClass=m.is_stale?' stale':'';
+      const provClass=m.provisional?' provisional':'';
+      const staleIcon=m.is_stale?' ⚠':'';
+      const provIcon=m.provisional?' ⏳':'';
+      const d=document.createElement('div');
+      d.className='metric-row'+staleClass+provClass;
+      d.style.cursor='pointer';
+      d.innerHTML='<div class="mk">'+esc(m.metric_key)+staleIcon+provIcon+'</div>'
+        +'<div class="val">'+esc(m.value_display)+'</div>'
+        +'<div class="asof">as of '+esc(m.as_of)+' · '+esc(m.source)+'</div>';
+      d.onclick=()=>showHistory(m.metric_key);
+      ml.appendChild(d);
+    });
+  }catch(e){ /* backend metrics unavailable */ }
 }
-
 async function showHistory(mk){
   const r=await fetch('/api/metrics/'+encodeURIComponent(mk)+'/history');
   const list=await r.json();
   const panel=$('metric-history');
   let rows='';
   list.forEach((f,i)=>{
-    const provMark=f.provisional?'&#8987; ':'';
+    const provMark=f.provisional?'⏳ ':'';
     rows+='<div class="hist-row" style="'+(i===0?'font-weight:700':'')+'">'
       +'<span style="width:85px">'+esc(f.as_of)+'</span>'
       +'<span style="width:65px">'+provMark+esc(f.value_display)+'</span>'
-      +'<span style="flex:1;color:#999">'+esc(f.source)+'</span>'
+      +'<span style="flex:1;color:#777">'+esc(f.source)+'</span>'
       +'</div>';
   });
-  panel.innerHTML='<div style="font-size:11px;font-weight:600;color:#555;margin-bottom:4px">'+esc(mk)+' history</div>'
+  panel.innerHTML='<div style="font-size:11px;font-weight:600;color:#888;margin-bottom:4px">'+esc(mk)+' history</div>'
     +'<div class="hist-rows">'+rows+'</div>';
   $('upd-key').value=mk;
 }
 
-// ── KB: pending ───────────────────────────────────────────────────────────────
+/* ── KB: pending ── */
 async function loadPending(){
-  const r=await fetch('/api/pending'); const j=await r.json();
-  const total=j.total||0;
-  const badge=$('pendingBadge');
-  badge.textContent=total; badge.style.display=total>0?'':'none';
-
-  const panel=$('pending-list'); panel.innerHTML='';
-  if(total===0){panel.innerHTML='<div class="empty" style="margin-top:16px">No pending items.</div>';return;}
-
-  // Provisional facts (from authoritative docs — live but unconfirmed)
-  if(j.provisional && j.provisional.length){
-    const hdr=document.createElement('div');
-    hdr.style.cssText='font-size:11px;font-weight:600;color:#0c5460;margin:6px 0 4px';
-    hdr.textContent='Provisional (authoritative — live at reduced confidence)';
-    panel.appendChild(hdr);
-    j.provisional.forEach(f=>{
-      const d=document.createElement('div');
-      d.className='pending-row prov';
-      d.innerHTML='<div class="pk">'+esc(f.metric_key)+' &middot; '+esc(f.source)+'</div>'
-        +'<div class="pval">'+esc(f.value_display)+' <span style="font-weight:normal;color:#666">as of '+esc(f.as_of)+'</span></div>'
-        +'<div class="pactions">'
-        +'<button class="btn-confirm" onclick="confirmFact(\''+f.fact_id+'\',this)">&#10003; Confirm</button>'
-        +'<button class="btn-reject" onclick="rejectFact(\''+f.fact_id+'\',this)">&#10007; Reject</button>'
-        +'</div>';
-      panel.appendChild(d);
-    });
-  }
-
-  // Pending extractions (from derived notes — not yet in fact store)
-  if(j.pending && j.pending.length){
-    const hdr=document.createElement('div');
-    hdr.style.cssText='font-size:11px;font-weight:600;color:#155724;margin:10px 0 4px';
-    hdr.textContent='Pending (derived notes — awaiting acceptance)';
-    panel.appendChild(hdr);
-    j.pending.forEach(p=>{
-      const d=document.createElement('div');
-      d.className='pending-row';
-      d.innerHTML='<div class="pk">'+esc(p.metric_key)+' &middot; '+esc(p.source)+'</div>'
-        +'<div class="pval">'+esc(p.value)+' <span style="font-weight:normal;color:#666">'+esc(p.unit)+' &middot; as of '+esc(p.as_of)+'</span></div>'
-        +'<div class="pactions">'
-        +'<button class="btn-confirm" onclick="acceptPending(\''+p.pending_id+'\',this)">&#10003; Accept</button>'
-        +'<button class="btn-reject" onclick="rejectPending(\''+p.pending_id+'\',this)">&#10007; Reject</button>'
-        +'</div>';
-      panel.appendChild(d);
-    });
-  }
+  try{
+    const r=await fetch('/api/pending'); const j=await r.json();
+    const total=j.total||0;
+    const badge=$('pendingBadge');
+    badge.textContent=total; badge.style.display=total>0?'':'none';
+    const panel=$('pending-list'); panel.innerHTML='';
+    if(total===0){panel.innerHTML='<div class="empty" style="margin-top:16px">No pending items.</div>';return;}
+    if(j.provisional && j.provisional.length){
+      const hdr=document.createElement('div');
+      hdr.style.cssText='font-size:11px;font-weight:600;color:#8db2bf;margin:6px 0 4px';
+      hdr.textContent='Provisional (authoritative — live at reduced confidence)';
+      panel.appendChild(hdr);
+      j.provisional.forEach(f=>{
+        const d=document.createElement('div'); d.className='pending-row prov';
+        d.innerHTML='<div class="pk">'+esc(f.metric_key)+' · '+esc(f.source)+'</div>'
+          +'<div class="pval">'+esc(f.value_display)+' <span style="font-weight:normal;color:#888">as of '+esc(f.as_of)+'</span></div>'
+          +'<div class="pactions">'
+          +'<button class="btn-confirm" onclick="confirmFact(\''+f.fact_id+'\',this)">✓ Confirm</button>'
+          +'<button class="btn-reject" onclick="rejectFact(\''+f.fact_id+'\',this)">✗ Reject</button>'
+          +'</div>';
+        panel.appendChild(d);
+      });
+    }
+    if(j.pending && j.pending.length){
+      const hdr=document.createElement('div');
+      hdr.style.cssText='font-size:11px;font-weight:600;color:#7fbf8a;margin:10px 0 4px';
+      hdr.textContent='Pending (derived notes — awaiting acceptance)';
+      panel.appendChild(hdr);
+      j.pending.forEach(p=>{
+        const d=document.createElement('div'); d.className='pending-row';
+        d.innerHTML='<div class="pk">'+esc(p.metric_key)+' · '+esc(p.source)+'</div>'
+          +'<div class="pval">'+esc(p.value)+' <span style="font-weight:normal;color:#888">'+esc(p.unit)+' · as of '+esc(p.as_of)+'</span></div>'
+          +'<div class="pactions">'
+          +'<button class="btn-confirm" onclick="acceptPending(\''+p.pending_id+'\',this)">✓ Accept</button>'
+          +'<button class="btn-reject" onclick="rejectPending(\''+p.pending_id+'\',this)">✗ Reject</button>'
+          +'</div>';
+        panel.appendChild(d);
+      });
+    }
+  }catch(e){ /* backend pending unavailable */ }
 }
-
 async function confirmFact(factId, btn){
   const r=await fetch('/api/pending/fact/'+factId+'/confirm',{method:'POST'});
-  if(r.ok){btn.closest('.pending-row').remove();toast('Fact confirmed.');loadMetrics();}
-  else toast('Error confirming fact.');
+  if(r.ok){btn.closest('.pending-row').remove();toast('Fact confirmed.');loadMetrics();} else toast('Error confirming fact.');
   loadPending();
 }
 async function rejectFact(factId, btn){
   const r=await fetch('/api/pending/fact/'+factId+'/reject',{method:'POST'});
-  if(r.ok){btn.closest('.pending-row').remove();toast('Fact rejected.');}
-  else toast('Error rejecting fact.');
+  if(r.ok){btn.closest('.pending-row').remove();toast('Fact rejected.');} else toast('Error rejecting fact.');
   loadPending();
 }
 async function acceptPending(pendingId, btn){
   const r=await fetch('/api/pending/'+pendingId+'/accept',{method:'POST'});
-  if(r.ok){btn.closest('.pending-row').remove();toast('Accepted into fact store.');loadMetrics();}
-  else toast('Error accepting.');
+  if(r.ok){btn.closest('.pending-row').remove();toast('Accepted into fact store.');loadMetrics();} else toast('Error accepting.');
   loadPending();
 }
 async function rejectPending(pendingId, btn){
   const r=await fetch('/api/pending/'+pendingId+'/reject',{method:'POST'});
-  if(r.ok){btn.closest('.pending-row').remove();toast('Rejected.');}
-  else toast('Error rejecting.');
+  if(r.ok){btn.closest('.pending-row').remove();toast('Rejected.');} else toast('Error rejecting.');
   loadPending();
 }
 
-// ── KB: manual sync ───────────────────────────────────────────────────────────
+/* ── KB: manual sync ── */
 async function refreshKB(){
-  $('syncBar').textContent='Syncing...';
+  $('syncStatus').textContent='Syncing…';
   try{
     const r=await fetch('/api/sync',{method:'POST'}); const j=await r.json();
-    $('syncBar').textContent=`Synced: +${j.new} new  ~${j.modified} mod  ${j.skipped} skip  ${j.pending_extractions} queued`;
+    $('syncStatus').textContent=`Synced: +${j.new} new · ~${j.modified} mod · ${j.skipped} skip · ${j.pending_extractions} queued`;
     loadMetrics(); loadPending();
-  } catch(e){
-    $('syncBar').textContent='Sync failed';
-  }
+  } catch(e){ $('syncStatus').textContent='Sync failed'; }
 }
 
-// ── KB: update form ────────────────────────────────────────────────────────────
+/* ── KB: update form ── */
 async function submitUpdate(){
   const metric_key=$('upd-key').value;
   const value=$('upd-val').value.trim();
@@ -329,56 +714,170 @@ async function submitUpdate(){
   const source=$('upd-source').value.trim()||'dashboard_update';
   if(!metric_key||!value){toast('Select a metric and enter a value.');return;}
   const r=await fetch('/api/metrics/update',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({metric_key,value,as_of,source})
   });
   const j=await r.json();
-  if(r.ok){
-    toast('Updated '+j.metric_key+': '+j.value_display+' as of '+j.as_of);
-    $('upd-val').value='';
-    loadMetrics();
-  } else {
-    toast('Error: '+(j.error||'unknown'));
+  if(r.ok){ toast('Updated '+j.metric_key+': '+j.value_display+' as of '+j.as_of); $('upd-val').value=''; loadMetrics(); }
+  else { toast('Error: '+(j.error||'unknown')); }
+}
+
+/* ── panels: toggles ── */
+function toggleHistory(){
+  const side=$('sidePanel'), fb=$('toggleFullscreenBtn');
+  const hidden=side.classList.toggle('hidden');
+  fb.classList.toggle('hidden',!hidden);
+}
+function toggleTranscript(){
+  const panel=$('transcriptPanel'), fb=$('showTranscriptBtn');
+  const hidden=panel.classList.toggle('hidden');
+  fb.classList.toggle('hidden',!hidden);
+}
+function toggleKb(){ $('kbPanel').classList.toggle('hidden'); }
+$('hideTranscriptBtn').onclick=toggleTranscript;
+$('showTranscriptBtn').onclick=toggleTranscript;
+$('toggleKbBtn').onclick=toggleKb;
+
+/* ── drag-to-resize (history + transcript + KB panels), max ~50% of screen ── */
+function initResize(handle, panel, anchor){
+  const MIN=180;
+  let dragging=false, startX=0, startWidth=0;
+  function onMove(e){
+    if(!dragging) return;
+    const delta=e.clientX-startX;
+    const raw=anchor==='left'? startWidth+delta : startWidth-delta;
+    const max=window.innerWidth*0.5;
+    panel.style.width=Math.max(MIN,Math.min(max,raw))+'px';
   }
+  function onUp(){
+    if(!dragging) return;
+    dragging=false; handle.classList.remove('dragging');
+    document.body.style.userSelect='';
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+  }
+  handle.addEventListener('mousedown',e=>{
+    dragging=true; startX=e.clientX;
+    startWidth=panel.getBoundingClientRect().width;
+    handle.classList.add('dragging'); document.body.style.userSelect='none';
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+    e.preventDefault();
+  });
 }
+initResize($('historyResizeHandle'), $('sidePanel'), 'left');
+initResize($('transcriptResizeHandle'), $('transcriptPanel'), 'right');
+initResize($('kbResizeHandle'), $('kbPanel'), 'right');
 
-// ── Session controls ─────────────────────────────────────────────────────────
-async function start(){
-  const r=await fetch('/api/session/start',{method:'POST'});
-  const j=await r.json(); sid=j.session_id;
-  history.replaceState(null,'','/?session='+sid);
-  $('cmd').innerHTML='';
-  $('alerts').innerHTML='<div class="empty">Listening... alerts will appear here.</div>';
-  startedUI(); connectWS(sid);
+/* ── header curtain: drag down to reveal profile + sources, max 2/3 of screen ── */
+const closeCurtain=(function initCurtain(){
+  const handle=$('curtainHandle'), panel=$('curtainPanel');
+  let dragging=false, startY=0, startH=0;
+  const maxHeight=()=>window.innerHeight*2/3;
+  function snapTo(open){
+    panel.classList.add('snap');
+    panel.style.height=(open? maxHeight():0)+'px';
+    setTimeout(()=>panel.classList.remove('snap'),260);
+  }
+  function onMove(e){
+    if(!dragging) return;
+    const delta=e.clientY-startY;
+    panel.style.height=Math.max(0,Math.min(maxHeight(),startH+delta))+'px';
+  }
+  function onUp(){
+    if(!dragging) return;
+    dragging=false; handle.classList.remove('dragging'); document.body.style.userSelect='';
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    const current=panel.getBoundingClientRect().height;
+    snapTo(current>maxHeight()*0.3);
+  }
+  handle.addEventListener('mousedown',e=>{
+    dragging=true; startY=e.clientY; startH=panel.getBoundingClientRect().height;
+    handle.classList.add('dragging'); document.body.style.userSelect='none';
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+    e.preventDefault();
+  });
+  return ()=>snapTo(false);
+})();
+$('curtainCloseBtn').onclick=closeCurtain;
+document.addEventListener('mousedown',e=>{
+  const panel=$('curtainPanel');
+  if(parseFloat(panel.style.height)<=0) return;
+  if(panel.contains(e.target) || $('curtainHandle').contains(e.target)) return;
+  closeCurtain();
+});
+
+/* ── sources: official logos, rendered from data ── */
+const SOURCES={
+  Microsoft:{
+    logo:'https://upload.wikimedia.org/wikipedia/commons/9/96/Microsoft_logo_%282012%29.svg',
+    items:[
+      {name:'Outlook', icon:'https://upload.wikimedia.org/wikipedia/commons/c/cc/Microsoft_Outlook_Icon_%282025%E2%80%93present%29.svg'},
+      {name:'Microsoft Teams', icon:'https://upload.wikimedia.org/wikipedia/commons/0/07/Microsoft_Office_Teams_%282025%E2%80%93present%29.svg'},
+      {name:'OneDrive', icon:'https://upload.wikimedia.org/wikipedia/commons/e/e7/Microsoft_OneDrive_Icon_%282025_-_present%29.svg'},
+      {name:'SharePoint', icon:'https://upload.wikimedia.org/wikipedia/commons/2/28/Microsoft_Office_SharePoint_%282025%E2%80%93present%29.svg'},
+      {name:'OneNote', icon:'https://upload.wikimedia.org/wikipedia/commons/3/34/Microsoft_OneNote_Icon_%282025_-_present%29.svg'},
+      {name:'Word', icon:'https://upload.wikimedia.org/wikipedia/commons/e/e8/Microsoft_Office_Word_%282025%E2%80%93present%29.svg'},
+      {name:'Excel', icon:'https://upload.wikimedia.org/wikipedia/commons/6/60/Microsoft_Office_Excel_%282025%E2%80%93present%29.svg'},
+      {name:'PowerPoint', icon:'https://upload.wikimedia.org/wikipedia/commons/d/df/Microsoft_Office_PowerPoint_%282025%E2%80%93present%29.svg'},
+    ]},
+  Google:{
+    logo:'https://cdn.simpleicons.org/google',
+    items:[
+      {name:'Gmail', icon:'https://cdn.simpleicons.org/gmail'},
+      {name:'Google Drive', icon:'https://cdn.simpleicons.org/googledrive'},
+      {name:'Google Meet', icon:'https://cdn.simpleicons.org/googlemeet'},
+      {name:'Google Calendar', icon:'https://cdn.simpleicons.org/googlecalendar'},
+      {name:'Google Chat', icon:'https://cdn.simpleicons.org/googlechat'},
+      {name:'Google Docs', icon:'https://cdn.simpleicons.org/googledocs'},
+      {name:'Google Sheets', icon:'https://cdn.simpleicons.org/googlesheets'},
+      {name:'Google Slides', icon:'https://cdn.simpleicons.org/googleslides'},
+    ]},
+  Atlassian:{
+    logo:'https://cdn.simpleicons.org/atlassian',
+    items:[
+      {name:'Jira', icon:'https://cdn.simpleicons.org/jira'},
+      {name:'Confluence', icon:'https://cdn.simpleicons.org/confluence'},
+      {name:'Trello', icon:'https://cdn.simpleicons.org/trello'},
+      {name:'Bitbucket', icon:'https://cdn.simpleicons.org/bitbucket'},
+    ]},
+};
+function renderSources(){
+  $('sourcesGenerated').innerHTML=Object.entries(SOURCES).map(([company,data])=>`
+    <div class="sources-col">
+      <h4><img src="${data.logo}" width="16" height="16" alt="" onerror="this.style.display='none'">${esc(company)}</h4>
+      ${data.items.map(it=>`<div class="source-item"><img src="${it.icon}" width="16" height="16" alt="" onerror="this.style.display='none'">${esc(it.name)}<span class="tag">Soon</span></div>`).join('')}
+    </div>
+  `).join('');
 }
-async function end(){ if(!sid)return; await fetch('/api/session/'+sid+'/end',{method:'POST'}); }
-function startedUI(){ $('startBtn').style.display='none'; $('endBtn').style.display='inline-block'; $('status').textContent='listening'; }
-function endedUI(){ sid=null; if(ws){ws.close();ws=null;} $('endBtn').style.display='none'; $('startBtn').style.display='inline-block'; $('status').textContent='idle'; $('cmd').innerHTML=''; }
+renderSources();
+$('localFileInput').addEventListener('change', e=>{
+  const files=[...e.target.files];
+  $('localFileList').innerHTML=files.map(f=>`<div class="source-item"><span>📄</span>${esc(f.name)}</div>`).join('');
+});
 
-// ── Meeting history ────────────────────────────────────────────────────────────
+/* ── history ── */
 function fmtDate(name){
-  // "2026-06-18_12-26-31" → "Jun 18 · 12:26"
   try{
     const [d,t]=name.split('_');
     const [y,mo,dy]=d.split('-');
     const [h,mi]=t.split('-');
     const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return months[parseInt(mo)-1]+' '+parseInt(dy)+' &middot; '+h+':'+mi;
+    return months[parseInt(mo)-1]+' '+parseInt(dy)+' · '+h+':'+mi;
   }catch(e){return name;}
 }
 async function loadHistory(){
   const r=await fetch('/api/meetings'); const list=await r.json();
   $('history').innerHTML=list.length?'':'<div class="empty" style="margin-top:10px">No saved meetings yet.</div>';
   list.forEach(m=>{
-    const d=document.createElement('div');
-    const hasAlerts = m.total_claims > 0;
-    d.className='mtg'+(hasAlerts?'':' empty-session');
+    const d=document.createElement('div'); d.className='mtg';
     let pills='';
-    if(m.contradicted>0) pills+='<span class="pill pill-red">'+m.contradicted+' flagged</span>';
-    if(m.verified>0) pills+='<span class="pill pill-green">'+m.verified+' verified</span>';
-    if(!hasAlerts) pills='<span style="color:#bbb;font-size:10px">no claims</span>';
-    d.innerHTML='<span class="del" title="Delete">&#x2715;</span>'
+    if(m.contradicted>0) pills+='🔴 '+m.contradicted+' ';
+    if(m.critical_issues>0) pills+='⚠ '+m.critical_issues+' critical';
+    if(!pills) pills=m.total_claims+' claims';
+    d.innerHTML='<span class="del" title="Delete">✕</span>'
       +'<div class="nm">'+fmtDate(m.name)+'</div>'
       +'<div class="meta">'+pills+'</div>';
     d.onclick=ev=>{ if(ev.target.classList.contains('del')){delMtg(m.name);ev.stopPropagation();} else viewMtg(m.name); };
@@ -389,17 +888,13 @@ async function viewMtg(name){
   const r=await fetch('/api/meetings/'+encodeURIComponent(name)); const j=await r.json();
   const s=(j.report&&j.report.summary)||{};
   const alerts=(j.report&&j.report.alerts)||[];
-
-  // Summary bar
-  let summaryHtml='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">';
+  let summaryHtml='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:13px">';
   const cats=[['VERIFIED','#28a745'],['CONTRADICTED','#dc3545'],['OUTDATED','#e6a817'],['UNVERIFIED','#ffc107'],['NEEDS_CLARIFICATION','#17a2b8']];
   cats.forEach(([c,col])=>{
     const n=s[c.toLowerCase()]||0;
-    if(n>0) summaryHtml+='<span style="background:'+col+'20;color:'+col+';border:1px solid '+col+'40;border-radius:10px;padding:2px 10px;font-weight:600">'+n+' '+c.replace(/_/g,' ')+'</span>';
+    if(n>0) summaryHtml+='<span style="background:'+col+'30;color:'+col+';border:1px solid '+col+'60;border-radius:10px;padding:2px 10px;font-weight:600">'+n+' '+c.replace(/_/g,' ')+'</span>';
   });
   summaryHtml+='</div>';
-
-  // Alerts list — contradicted + outdated first
   const order=['CONTRADICTED','OUTDATED','VERIFIED','UNVERIFIED','NEEDS_CLARIFICATION'];
   const sorted=[...alerts].sort((a,b)=>order.indexOf(a.category)-order.indexOf(b.category));
   let alertsHtml='';
@@ -407,41 +902,64 @@ async function viewMtg(name){
     sorted.forEach(a=>{
       const colors={'VERIFIED':'#28a745','CONTRADICTED':'#dc3545','OUTDATED':'#e6a817','UNVERIFIED':'#aaa','NEEDS_CLARIFICATION':'#17a2b8'};
       const col=colors[a.category]||'#aaa';
-      alertsHtml+='<div style="border-left:4px solid '+col+';background:#fff;border-radius:4px;padding:8px 10px;margin:6px 0;box-shadow:0 1px 2px rgba(0,0,0,.06)">'
+      alertsHtml+='<div style="border-left:4px solid '+col+';background:#181818;border-radius:4px;padding:8px 10px;margin:6px 0">'
         +'<div style="font-size:10px;font-weight:700;color:'+col+'">'+esc(a.category.replace(/_/g,' '))+'</div>'
-        +'<div style="font-size:13px;margin:2px 0">&ldquo;'+esc(a.claim_text)+'&rdquo;</div>'
-        +(a.current_value?'<div style="font-size:11px;color:#555;margin-top:3px">On record: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+'</div>':'')
-        +(a.suggested_response?'<div style="font-size:11px;color:#333;margin-top:3px">&#128172; '+esc(a.suggested_response)+'</div>':'')
+        +'<div style="font-size:13px;margin:2px 0;color:#ddd">“'+esc(a.claim_text)+'”</div>'
+        +(a.current_value?'<div style="font-size:11px;color:#999;margin-top:3px">On record: <strong>'+esc(a.current_value_display||a.current_value)+'</strong> as of '+esc(a.current_as_of||'?')+'</div>':'')
+        +(a.suggested_response?'<div style="font-size:11px;color:#bbb;margin-top:3px">💬 '+esc(a.suggested_response)+'</div>':'')
         +'</div>';
     });
-  } else {
-    alertsHtml='<div style="color:#999;font-size:13px;margin:10px 0">No claims recorded.</div>';
-  }
-
-  // Transcript collapsible
+  } else { alertsHtml='<div style="color:#777;font-size:13px;margin:10px 0">No claims recorded.</div>'; }
   const transcript=j.transcript||'';
   const txHtml=transcript?'<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:#888">Show transcript</summary>'
-    +'<pre style="white-space:pre-wrap;font-size:12px;color:#555;margin-top:8px;max-height:200px;overflow:auto">'+esc(transcript.slice(0,4000))+'</pre></details>':'';
-
+    +'<pre style="white-space:pre-wrap;font-size:12px;color:#999;margin-top:8px;max-height:200px;overflow:auto">'+esc(transcript.slice(0,4000))+'</pre></details>':'';
   $('modalBox').innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
     +'<h2 style="margin:0;font-size:16px">'+fmtDate(name)+'</h2>'
-    +'<button onclick="document.getElementById(\'modal\').style.display=\'none\'" style="background:#eee;color:#333;padding:5px 12px">Close</button>'
-    +'</div>'
-    +summaryHtml
-    +alertsHtml
-    +txHtml;
+    +'<button onclick="document.getElementById(\'modal\').style.display=\'none\'" style="background:#333;color:#ddd;border:1px solid #555;padding:5px 12px">Close</button>'
+    +'</div>'+summaryHtml+alertsHtml+txHtml;
   $('modal').style.display='flex';
 }
 async function delMtg(name){ if(!confirm('Delete '+name+'?'))return; await fetch('/api/meetings/'+encodeURIComponent(name),{method:'DELETE'}); loadHistory(); }
 
-// ── Utils ─────────────────────────────────────────────────────────────────────
+/* ── utils ── */
 function toast(t){ const e=document.createElement('div'); e.className='toast'; e.textContent=t; document.body.appendChild(e); setTimeout(()=>e.remove(),4000); }
-function esc(s){ return (s||'').replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-$('startBtn').onclick=start; $('endBtn').onclick=end;
+/* ── bindings ── */
+$('startBtn').onclick=start;
+$('endBtn').onclick=stop;
+$('recordBtn').onclick=()=>{ if(isLive) stop(); else start(); };
+$('togglePanelsBtn').onclick=toggleHistory;
+$('toggleFullscreenBtn').onclick=toggleHistory;
+$('syncBtn').onclick=refreshKB;
+$('upd-submit').onclick=submitUpdate;
+$('tab-metrics').onclick=()=>showTab('metrics');
+$('tab-pending').onclick=()=>showTab('pending');
+$('tab-update').onclick=()=>showTab('update');
+document.querySelectorAll('.filter-btn').forEach(btn=>{
+  btn.onclick=e=>{
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    activeFilter=e.target.dataset.filter;
+    renderAlerts();
+  };
+  const cat=btn.dataset.filter;
+  if(cat==='all') return;
+  btn.draggable=true;
+  btn.title='Drag onto a card to mark it as '+cat;
+  btn.addEventListener('dragstart',e=>{
+    e.dataTransfer.setData('text/plain',cat);
+    e.dataTransfer.effectAllowed='copy';
+    btn.classList.add('dragging-tab');
+  });
+  btn.addEventListener('dragend',()=>btn.classList.remove('dragging-tab'));
+});
+$('modal').onclick=e=>{ if(e.target===$('modal')) $('modal').style.display='none'; };
+
+/* ── init ── */
 loadHistory(); loadMetrics(); loadPending();
 if(params.get('session')){ sid=params.get('session'); startedUI(); connectWS(sid); }
+else{ renderSampleAlerts(); }
 </script>
 </body>
 </html>
