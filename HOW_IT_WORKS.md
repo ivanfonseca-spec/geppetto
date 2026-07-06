@@ -53,16 +53,45 @@ A private dashboard with three areas:
 
 Each alert is color-coded into one of five verdicts:
 
-| Verdict | Meaning |
-|---|---|
-| **Verified** | Matches the records — all good. |
-| **Contradicted** | Conflicts with the records — worth addressing. |
-| **Outdated** | Was true once, but the records have since moved on. Shows the current value. |
-| **Unverified** | No record either way — can't confirm it. |
-| **Needs clarification** | Partly true or ambiguous — worth a quick question. |
+| Verdict | Color | Meaning |
+|---|---|---|
+| **Verified** | Green | Matches the records — all good. |
+| **Contradicted** | Red | Conflicts with the records — worth addressing. |
+| **Outdated** | Slate | Was true once, but the records have since moved on. Shows the current value. |
+| **Unverified** | Grey | No record either way — can't confirm it. |
+| **Needs clarification** | Yellow | Partly true or ambiguous — worth a quick question. |
+
+The same colors apply consistently to the filter tabs and the alert cards, so
+the status is recognizable at a glance without reading the label.
 
 Every alert also shows a confidence level (High / Medium / Low) and the source
 document it checked against.
+
+## Overriding a verdict mid-meeting
+
+If a claim is flagged "Needs clarification" but gets confirmed live in the meeting,
+drag the "Verified" filter tab directly onto that alert card. The status updates
+instantly — no need to wait for the system to re-check.
+
+## Resizing and collapsing panels
+
+Drag the edge of the Meeting History or Full Transcript panel to make it wider
+(up to half the screen). Click the collapse icon to shrink either panel down to
+a small icon, giving the live alerts feed the full width of the screen when you
+need to focus.
+
+## Audio waveform
+
+A real-time waveform runs across the full bottom of the screen during a live
+session. It stays flat when no one is talking and animates the moment audio
+arrives — a visual confirmation the system is actively listening.
+
+## Profile and data sources
+
+Pull down the header panel (drag or click) to see your profile and connect data
+sources. Microsoft, Google, and Atlassian integrations are listed with their logos
+and marked "Soon." File upload from your computer is live right now — select a
+file and it is added to the knowledge base immediately without any backend setup.
 
 ## How the knowledge base stays current
 

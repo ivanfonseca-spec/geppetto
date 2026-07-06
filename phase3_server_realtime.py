@@ -155,6 +155,19 @@ async def session_chunk(sid: str, request: Request):
     if not session:
         return JSONResponse(status_code=404, content={"error": "unknown session"})
     body = await request.body()
+    # live audio level for the dashboard waveform (RMS of this chunk, ~0-100)
+    try:
+        import io, wave
+        from array import array as _arr
+        with wave.open(io.BytesIO(body), "rb") as _w:
+            _frames = _w.readframes(_w.getnframes())
+        _s = _arr("h"); _s.frombytes(_frames)
+        if _s:
+            _sub = _s[::8] or _s
+            _rms = (sum(v * v for v in _sub) / len(_sub)) ** 0.5
+            await manager.send_audio_level(sid, min(100.0, _rms / 30.0))
+    except Exception:
+        pass
     await manager.send_status(sid, "processing", session.claim_count)
     try:
         alerts = await session.ingest_chunk(body)
@@ -163,6 +176,13 @@ async def session_chunk(sid: str, request: Request):
         await manager.send_warning(sid, "Transcription hiccup - continuing")
         await manager.send_status(sid, "listening", session.claim_count)
         return JSONResponse(status_code=202, content={"status": "skipped"})
+    # live transcript for the transcript panel
+    try:
+        _tx = getattr(session, "rolling_transcript", "")
+        if _tx:
+            await manager.send_transcript(sid, _tx)
+    except Exception:
+        pass
     for a in alerts:
         await manager.send_alert(sid, a)
     await manager.send_status(sid, "listening", session.claim_count)

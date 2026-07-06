@@ -71,6 +71,32 @@ The system shall save a complete record for every session: transcript, JSON repo
 ### FR-15 · One-command launch
 The system shall start with a single command (`start.bat`). The audio streamer shall launch automatically when the PM clicks "Start live meeting" — no separate manual step required. The streamer shall terminate automatically when the session ends.
 
+### FR-16 · Verdict color system
+Each claim verdict shall have a distinct, consistent visual identity across the entire dashboard — filter tabs and alert cards shall use the same outline, fill, and badge color for each status:
+- **Verified** — green
+- **Contradicted** — red
+- **Unverified** — grey
+- **Needs clarification** — yellow
+- **Outdated** — slate
+
+### FR-17 · Drag-to-override verdict
+The PM shall be able to drag any filter tab (e.g. "Verified") directly onto a claim card to manually override its status. This allows in-meeting corrections — e.g. promoting a "Needs clarification" claim to "Verified" once it is confirmed live in the meeting.
+
+### FR-18 · Resizable panels
+The Meeting History and Full Transcript panels shall be resizable by dragging their edge. Maximum width shall be half the screen. This allows the PM to read more content without opening a separate view.
+
+### FR-19 · Collapsible panels
+The Meeting History and Full Transcript panels shall be collapsible to a small icon with a single click. When collapsed, the live alerts feed takes the full width of the screen.
+
+### FR-20 · Real-time audio waveform
+A real-time audio waveform shall be displayed across the full bottom of the screen during a live session. The waveform shall be flat when no audio is detected and animate when audio input is received. This provides the PM with a visual confirmation that the system is actively listening.
+
+### FR-21 · User profile and data source panel
+A hidden panel shall be accessible from the header (via drag or click). The panel shall display the PM's profile (name, title, role) and a list of data source connectors. Connectors for Microsoft, Google, and Atlassian apps shall be shown with their respective logos and marked "Soon" (not yet wired up). File upload from the local computer shall be available and functional immediately — it does not require backend connector work.
+
+### FR-22 · Local file upload as data source
+The PM shall be able to upload files directly from their computer as a knowledge base source from the data source panel. This capability shall be live (no backend integration required) unlike the cloud connectors.
+
 ---
 
 ## Non-Functional Requirements

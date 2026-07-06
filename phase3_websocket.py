@@ -97,6 +97,16 @@ class ConnectionManager:
             "type": "warning", "data": {"message": message},
         })
 
+    async def send_transcript(self, session_id: str, text: str):
+        await self.broadcast(session_id, {
+            "type": "transcript", "data": {"text": text},
+        })
+
+    async def send_audio_level(self, session_id: str, level: float):
+        await self.broadcast(session_id, {
+            "type": "audio_level", "data": {"level": level},
+        })
+
     # ----- introspection ----------------------------------------------------
     def client_count(self, session_id: str) -> int:
         return len(self.active.get(session_id, set()))
