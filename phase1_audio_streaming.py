@@ -174,25 +174,181 @@ def list_devices(pyaudio_mod):
 
 
 # ----------------------------------------------------------------------------
+# audio sources (single device, or mic + system-audio mixed)
+# ----------------------------------------------------------------------------
+def _import_pyaudio():
+    """Prefer PyAudioWPatch (adds WASAPI loopback for system-audio capture);
+    fall back to plain pyaudio. Returns (module, has_wasapi_loopback)."""
+    try:
+        import pyaudiowpatch as pyaudio
+        return pyaudio, True
+    except ImportError:
+        import pyaudio
+        return pyaudio, False
+
+
+def _find_cable_index(pyaudio_mod):
+    """Return the VB-Cable input device index, or None if not present."""
+    p = pyaudio_mod.PyAudio()
+    idx = None
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info["maxInputChannels"] > 0 and "CABLE" in info["name"].upper():
+            idx = i
+            break
+    p.terminate()
+    return idx
+
+
+class _SingleSource:
+    """Capture from one input device at 16 kHz mono."""
+    def __init__(self, pyaudio_mod, device_index, frame_len):
+        self.frame_len = frame_len
+        self.p = pyaudio_mod.PyAudio()
+        self.stream = self.p.open(
+            format=pyaudio_mod.paInt16, channels=1, rate=RATE, input=True,
+            input_device_index=device_index, frames_per_buffer=frame_len)
+
+    def read(self):
+        raw = self.stream.read(self.frame_len, exception_on_overflow=False)
+        f = array("h"); f.frombytes(raw)
+        return f
+
+    def close(self):
+        try:
+            self.stream.stop_stream(); self.stream.close()
+        finally:
+            self.p.terminate()
+
+
+class _MixSource:
+    """Capture the microphone AND the system output (headset) and mix them.
+
+    Mic is opened at 16 kHz mono. System audio uses WASAPI loopback (captures
+    whatever plays in the headset — remote participants) when PyAudioWPatch is
+    available, else VB-Cable. Each source is read in its own thread into a
+    buffer; read() pulls one frame from each and sums them (clipped to int16).
+    """
+    def __init__(self, pyaudio_mod, frame_len):
+        self.pa = pyaudio_mod
+        self.frame_len = frame_len
+        self.p = pyaudio_mod.PyAudio()
+        self.lock = threading.Lock()
+        self.stop = threading.Event()
+        self.buf_mic = array("h")
+        self.buf_sys = array("h")
+
+        # microphone (your voice) — 16 kHz mono
+        self.mic_stream = self.p.open(
+            format=pyaudio_mod.paInt16, channels=1, rate=RATE, input=True,
+            input_device_index=None, frames_per_buffer=frame_len)
+        print("  mic: system default microphone (16 kHz mono)")
+
+        # system audio (what plays in the headset) — loopback
+        self.sys_stream, self.sys_rate, self.sys_ch = self._open_loopback()
+
+        threading.Thread(target=self._mic_reader, daemon=True).start()
+        if self.sys_stream:
+            threading.Thread(target=self._sys_reader, daemon=True).start()
+
+    def _open_loopback(self):
+        pa, p = self.pa, self.p
+        # 1) WASAPI loopback (PyAudioWPatch) — no VB-Cable / no routing needed
+        if hasattr(p, "get_default_wasapi_loopback"):
+            try:
+                info = p.get_default_wasapi_loopback()
+                rate = int(info["defaultSampleRate"])
+                ch = int(info["maxInputChannels"]) or 2
+                st = p.open(format=pa.paInt16, channels=ch, rate=rate, input=True,
+                            input_device_index=info["index"],
+                            frames_per_buffer=int(rate * FRAME_MS / 1000))
+                print(f"  system: WASAPI loopback '{info['name']}' ({rate} Hz x{ch})")
+                return st, rate, ch
+            except Exception as e:
+                print(f"  [warn] WASAPI loopback failed: {str(e)[:70]}")
+        # 2) VB-Cable @ 16 kHz mono
+        idx = _find_cable_index(pa)
+        if idx is not None:
+            st = p.open(format=pa.paInt16, channels=1, rate=RATE, input=True,
+                        input_device_index=idx, frames_per_buffer=self.frame_len)
+            print("  system: VB-Cable loopback (16 kHz mono)")
+            return st, RATE, 1
+        print("  [warn] No system-audio source found — capturing MIC ONLY.\n"
+              "         For headset/remote audio: py -3.12 -m pip install PyAudioWPatch")
+        return None, RATE, 1
+
+    def _norm(self, raw):
+        """Downmix to mono and resample the loopback stream to 16 kHz."""
+        a = array("h"); a.frombytes(raw)
+        mono = a[0::self.sys_ch] if self.sys_ch >= 2 else a   # left channel
+        if self.sys_rate != RATE and len(mono):
+            step = self.sys_rate / RATE
+            mono = array("h", [mono[int(i * step)]
+                               for i in range(int(len(mono) / step))])
+        return mono
+
+    def _mic_reader(self):
+        while not self.stop.is_set():
+            try:
+                raw = self.mic_stream.read(self.frame_len, exception_on_overflow=False)
+            except Exception:
+                break
+            f = array("h"); f.frombytes(raw)
+            with self.lock:
+                self.buf_mic.extend(f)
+
+    def _sys_reader(self):
+        n = int(self.sys_rate * FRAME_MS / 1000)
+        while not self.stop.is_set():
+            try:
+                raw = self.sys_stream.read(n, exception_on_overflow=False)
+            except Exception:
+                break
+            mono = self._norm(raw)
+            with self.lock:
+                self.buf_sys.extend(mono)
+                # keep the system buffer from drifting far ahead of the mic
+                cap = self.frame_len * 50
+                if len(self.buf_sys) > cap:
+                    del self.buf_sys[:len(self.buf_sys) - cap]
+
+    def read(self):
+        n = self.frame_len
+        while not self.stop.is_set():
+            with self.lock:
+                if len(self.buf_mic) >= n:
+                    mic = self.buf_mic[:n]; del self.buf_mic[:n]
+                    if len(self.buf_sys) >= n:
+                        sysf = self.buf_sys[:n]; del self.buf_sys[:n]
+                    else:
+                        sysf = array("h", [0]) * n    # system silent / behind
+                    out = array("h", [0]) * n
+                    for i in range(n):
+                        v = mic[i] + sysf[i]
+                        out[i] = 32767 if v > 32767 else (-32768 if v < -32768 else v)
+                    return out
+            time.sleep(0.005)
+        return None
+
+    def close(self):
+        self.stop.set()
+        for st in (self.mic_stream, self.sys_stream):
+            if st:
+                try:
+                    st.stop_stream(); st.close()
+                except Exception:
+                    pass
+        try:
+            self.p.terminate()
+        except Exception:
+            pass
+
+
+# ----------------------------------------------------------------------------
 # main capture loop
 # ----------------------------------------------------------------------------
-def run(server, session_id=None, max_seconds=None, device_mode="vbcable"):
-    import pyaudio
-
-    if device_mode == "list":
-        list_devices(pyaudio)
-        return
-
-    sid = session_id or start_session(server)
-
-    if device_mode == "mic":
-        device = None  # system default mic (Jabra)
-        print("Capture mode: system default microphone")
-    else:
-        device = find_vb_cable(pyaudio)  # loopback — all call participants
-        print(f"Capture mode: VB-Cable (device index {device})")
-
-    # background sender so capture isn't blocked by the network
+def _capture_loop(server, sid, source, max_seconds=None):
+    """Pull frames from a source, VAD-chunk them, and stream chunks to the server."""
     q = Queue()
     stop = threading.Event()
 
@@ -216,17 +372,14 @@ def run(server, session_id=None, max_seconds=None, device_mode="vbcable"):
     t.start()
 
     chunker = StreamChunker()
-    p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16, channels=1, rate=RATE, input=True,
-                    input_device_index=device, frames_per_buffer=chunker.frame_len)
     print("Listening… (Ctrl+C to stop)")
-
     sent = 0
     started = time.time()
     try:
         while True:
-            raw = stream.read(chunker.frame_len, exception_on_overflow=False)
-            frame = array("h"); frame.frombytes(raw)
+            frame = source.read()
+            if frame is None:
+                break
             chunk = chunker.add_frame(frame)
             if chunk and not chunk["silent"]:
                 q.put(chunk_to_wav_bytes(chunk["samples"]))
@@ -240,10 +393,34 @@ def run(server, session_id=None, max_seconds=None, device_mode="vbcable"):
         tail = chunker.flush()
         if tail and tail["dur"] > 0.5:  # send anything > 0.5s on exit
             q.put(chunk_to_wav_bytes(tail["samples"]))
-        stream.stop_stream(); stream.close(); p.terminate()
+        source.close()
         stop.set(); t.join(timeout=15)
         folder = end_session(server, sid)
         print(f"Session ended. Saved: {folder}")
+
+
+def run(server, session_id=None, max_seconds=None, device_mode="vbcable"):
+    pyaudio, _has_wpatch = _import_pyaudio()
+
+    if device_mode == "list":
+        list_devices(pyaudio)
+        return
+
+    sid = session_id or start_session(server)
+    frame_len = int(RATE * FRAME_MS / 1000)
+
+    if device_mode == "both":
+        print("Capture mode: mic + system audio (mixed)")
+        source = _MixSource(pyaudio, frame_len)
+    elif device_mode == "mic":
+        print("Capture mode: system default microphone")
+        source = _SingleSource(pyaudio, None, frame_len)
+    else:
+        device = find_vb_cable(pyaudio)  # loopback — all call participants
+        print(f"Capture mode: VB-Cable (device index {device})")
+        source = _SingleSource(pyaudio, device, frame_len)
+
+    _capture_loop(server, sid, source, max_seconds)
 
 
 def main():
@@ -253,10 +430,11 @@ def main():
     ap.add_argument("--max-seconds", type=int, default=None)
     ap.add_argument(
         "--device", default="vbcable",
-        choices=["vbcable", "mic", "list"],
+        choices=["vbcable", "mic", "both", "list"],
         help=(
             "vbcable (default): capture all call audio via VB-Cable loopback; "
-            "mic: use system default microphone (Jabra); "
+            "mic: use system default microphone only; "
+            "both: capture mic + system/headset audio and mix them; "
             "list: print available input devices and exit"
         )
     )
